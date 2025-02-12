@@ -33,16 +33,42 @@
             border-bottom: 1px solid #ccc;
             max-height: 80%;
             background-color: #f9f9f9;
+            direction: rtl;
+            text-align: right;
+        }
+        .message {
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            unicode-bidi: plaintext; /* برای جلوگیری از بهم‌ریختگی متن‌های ترکیبی فارسی و انگلیسی */
+            white-space: pre-line;
+            word-wrap: break-word;
+        }
+        .bot-message {
+            background-color: #e3f2fd;
+            unicode-bidi: plaintext; /* همینجا هم اضافه شده برای بات */
+        }
+        .user-message {
+            background-color: #d1f2d1;
+            text-align: left;
+            direction: ltr;
+        }
+        .separator {
+            margin: 10px 0;
+            border: none;
+            border-top: 2px dashed #ccc;
         }
         #userInput {
             padding: 10px;
-            width: 80%;
+            width: 75%;
             border: 1px solid #ccc;
             border-radius: 5px;
-            margin-right: 10px;
+            margin-right: 5px;
+            direction: rtl;
+            text-align: right;
         }
         button {
-            padding: 10px 20px;
+            padding: 10px 15px;
             background-color: #4CAF50;
             color: white;
             border: none;
@@ -54,7 +80,7 @@
             background-color: #45a049;
         }
         p {
-            margin: 0;
+            margin: 5px 0;
         }
     </style>
 </head>
@@ -70,14 +96,14 @@
 
     <script>
         async function sendMessage() {
-            let userInput = document.getElementById("userInput").value;
-            if (userInput.trim() === "") return;
+            let userInput = document.getElementById("userInput").value.trim();
+            if (!userInput) return;
 
-            // نمایش پیام کاربر در صفحه
-            document.getElementById("chatlog").innerHTML += `<p><b>شما:</b> ${userInput}</p>`;
+            // نمایش پیام کاربر
+            document.getElementById("chatlog").innerHTML += `<p class="message user-message"><b>شما:</b> ${userInput}</p>`;
 
-            // ارسال پیام به سرور (FastAPI)
-            let response = await fetch("http://localhost:8000/chat", {
+            // ارسال پیام به سرور
+            let response = await fetch("https://expert-capybara-5gr7j5g5rpxqf46jx-8000.app.github.dev/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message: userInput })
@@ -85,14 +111,35 @@
 
             // دریافت پاسخ از سرور
             let data = await response.json();
-            document.getElementById("chatlog").innerHTML += `<p><b>بات:</b> ${data.response}</p>`;
+            let formattedResponse = formatResponse(data.response);
+
+            document.getElementById("chatlog").innerHTML += formattedResponse;
 
             // اسکرول خودکار به پایین
             document.getElementById("chatlog").scrollTop = document.getElementById("chatlog").scrollHeight;
 
-            // پاک کردن ورودی کاربر
+            // پاک کردن فیلد ورودی
             document.getElementById("userInput").value = "";
         }
+
+        function formatResponse(responseText) {
+            let paragraphs = responseText.split("\n\n"); 
+            let formattedText = paragraphs.map(p => `<p class="message bot-message">${p}</p>`).join('<hr class="separator">'); 
+            return formattedText;
+        }
+
+        // ✅ دریافت پیام خوش‌آمدگویی هنگام لود صفحه
+        window.onload = async function() {
+            let response = await fetch("https://expert-capybara-5gr7j5g5rpxqf46jx-8000.app.github.dev/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: "" }) // فرستادن پیام خالی برای دریافت پیام خوش‌آمدگویی
+            });
+
+            let data = await response.json();
+            let formattedResponse = formatResponse(data.response);
+            document.getElementById("chatlog").innerHTML += formattedResponse;
+        };
     </script>
 </body>
 </html>
