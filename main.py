@@ -525,6 +525,7 @@ async def real_estate_chatbot(user_message: str) -> str:
 
 
 
+
 # ✅ مسیر API برای چت‌بات
 @app.post("/chat")
 async def chat(request: ChatRequest):
