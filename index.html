@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>چت‌بات مشاور املاک</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .chatbox {
+            background-color: #fff;
+            width: 400px;
+            height: 500px;
+            border-radius: 10px;
+            border: 1px solid #ccc;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        #chatlog {
+            overflow-y: auto;
+            flex-grow: 1;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-bottom: 1px solid #ccc;
+            max-height: 80%;
+            background-color: #f9f9f9;
+        }
+        #userInput {
+            padding: 10px;
+            width: 80%;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin-right: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        p {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="chatbox">
+        <h2>چت‌بات مشاور املاک</h2>
+        <div id="chatlog"></div>
+        <div>
+            <input id="userInput" type="text" placeholder="پیام خود را بنویسید..." />
+            <button onclick="sendMessage()">ارسال</button>
+        </div>
+    </div>
+
+    <script>
+        async function sendMessage() {
+            let userInput = document.getElementById("userInput").value;
+            if (userInput.trim() === "") return;
+
+            // نمایش پیام کاربر در صفحه
+            document.getElementById("chatlog").innerHTML += `<p><b>شما:</b> ${userInput}</p>`;
+
+            // ارسال پیام به سرور (FastAPI)
+            let response = await fetch("http://localhost:8000/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: userInput })
+            });
+
+            // دریافت پاسخ از سرور
+            let data = await response.json();
+            document.getElementById("chatlog").innerHTML += `<p><b>بات:</b> ${data.response}</p>`;
+
+            // اسکرول خودکار به پایین
+            document.getElementById("chatlog").scrollTop = document.getElementById("chatlog").scrollHeight;
+
+            // پاک کردن ورودی کاربر
+            document.getElementById("userInput").value = "";
+        }
+    </script>
+</body>
+</html>
