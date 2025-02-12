@@ -547,6 +547,14 @@ async def chat(request: ChatRequest):
     return {"response": bot_response}
 
 
+from fastapi.responses import FileResponse
+import os
+
+@app.get("/")
+async def serve_home():
+    return FileResponse(os.path.join(os.getcwd(), "index.html"))
+
+
 # ✅ اجرای FastAPI
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
