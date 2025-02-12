@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+openai
+requests
+python-dotenv
+os
+pandas
+pydantic
+cachetools
