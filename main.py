@@ -17,6 +17,7 @@ api_key = os.getenv("OPENAI_API_KEY")
 client = openai.OpenAI(api_key=api_key)
 
 
+# ESTATY_API_KEY = 'g46s5rt87SDG874s4872sd4b6a'
 ESTATY_API_KEY = os.getenv("ESTATY_API_KEY")
 ESTATY_API_URL = "https://panel.estaty.app/api/v1"
 
@@ -241,7 +242,7 @@ def generate_ai_summary(properties, start_index=0):
     """ ارائه خلاصه کوتاه از املاک پیشنهادی """
 
     global last_properties_list, current_property_index
-    number_property = 3
+    number_property = 1
 
     if not properties:
         return "متأسفانه هیچ ملکی با این مشخصات پیدا نشد. لطفاً بازه قیمتی را تغییر دهید یا منطقه دیگری انتخاب کنید."
@@ -349,6 +350,43 @@ def generate_ai_details(property_number, detail_type=None):
     return response.choices[0].message.content
 
 
+from duckduckgo_search import DDGS
+from fastapi import HTTPException
+
+async def fetch_real_estate_trends(query):
+    """ جستجو در اینترنت و خلاصه کردن اطلاعات بازار مسکن دبی """
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=5))  # استخراج نتایج
+
+        if not results:
+            return "متأسفم، اطلاعاتی درباره این موضوع پیدا نشد."
+
+        # ترکیب اطلاعات برای ارسال به GPT
+        search_summary = "\n".join([f"{r['title']}: {r['body']}" for r in results if 'body' in r])
+
+        prompt = f"""
+        اطلاعات زیر درباره بازار املاک دبی از منابع مختلف جمع‌آوری شده است. لطفاً یک خلاصه مفید و مختصر از آن به زبان فارسی ارائه بده:
+
+        {search_summary}
+
+        **🔹 خلاصه‌ای کوتاه و مفید در ۳ الی ۴ جمله ارائه بده.**
+        """
+
+        ai_response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": prompt}],
+            max_tokens=150
+        )
+
+        return ai_response.choices[0].message.content.strip()
+
+    except Exception as e:
+        print(f"❌ خطا در جستجو: {str(e)}")  # لاگ خطا
+        raise HTTPException(status_code=500, detail=f"خطا در جستجو یا پردازش اطلاعات: {str(e)}")
+    
+
+
 
 async def real_estate_chatbot(user_message: str) -> str:
     """ بررسی نوع پیام و ارائه پاسخ مناسب با تشخیص هوشمند """
@@ -376,6 +414,7 @@ async def real_estate_chatbot(user_message: str) -> str:
     - `search`: درخواست کلی برای جستجوی ملک (مثلاً: "خانه می‌خوام"، "یه ملک معرفی کن")
     - `details`: درخواست اطلاعات بیشتر درباره‌ی یکی از املاک قبلاً معرفی‌شده (مثلاً: "همین ملک را توضیح بده"، "درباره ملک ۲ توضیح بده"، "قیمت ملک ۱ چقدره؟"، "امکانات ملک ۲"، "قیمت ملک ۱ چقدره؟")
     - `more`: درخواست نمایش املاک بیشتر (مثلاً: "ملکای دیگه رو نشونم بده"،"ملک دیگه ای نشون بده"، "موردای بیشتری دارین؟")
+    - `market`: سوال درباره وضعیت بازار مسکن در دبی
     - `search`: درخواست کلی برای جستجوی ملک (مثلاً: "خانه می‌خوام"، "یه ملک معرفی کن")
     - `unknown`: نامشخص
 
@@ -393,7 +432,7 @@ async def real_estate_chatbot(user_message: str) -> str:
 
 
     **خروجی فقط یک JSON شامل دو مقدار باشد:**  
-    - `"type"`: یکی از گزینه‌های `search`, `details`, `more`, `unknown`  
+    - `"type"`: یکی از گزینه‌های `search`, `market`, `details`, `more`, `unknown`  
     - `"detail_requested"`: اگر `details` باشد، مقدار `price`, `features`, `location`, `payment` باشد، وگرنه مقدار `null` باشد.
 
     """
@@ -426,6 +465,11 @@ async def real_estate_chatbot(user_message: str) -> str:
     detail_requested = parsed_response.get("detail_requested", None)
 
     print(f"🔹 نوع درخواست: {response_type}, جزئیات درخواستی: {detail_requested}")
+
+
+    if "market" in response_type.lower():
+        return await fetch_real_estate_trends("Dubai real estate market trends 2024 and 2025")
+        
 
     # ✅ **۳. تشخیص درخواست اطلاعات بیشتر درباره املاک قبلاً معرفی‌شده**
     if "details" in response_type.lower():
@@ -522,7 +566,6 @@ async def real_estate_chatbot(user_message: str) -> str:
 
     # ✅ **۶. اگر درخواست ناشناخته بود**
     return "متوجه نشدم که به دنبال چه چیزی هستید. لطفاً واضح‌تر بگویید که دنبال ملک هستید یا اطلاعات بیشتری درباره ملکی می‌خواهید."
-
 
 
 
