@@ -17,7 +17,6 @@ api_key = os.getenv("OPENAI_API_KEY")
 client = openai.OpenAI(api_key=api_key)
 
 
-# ESTATY_API_KEY = 'g46s5rt87SDG874s4872sd4b6a'
 ESTATY_API_KEY = os.getenv("ESTATY_API_KEY")
 ESTATY_API_URL = "https://panel.estaty.app/api/v1"
 
