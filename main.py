@@ -66,7 +66,7 @@ def filter_properties(filters):
     # فیلتر کردن املاک بر اساس وضعیت فروش، منطقه و قیمت
     filtered_properties = [
         property for property in response_data.get("properties", [])
-        if property.get("sales_status", {}).get("name", "").lower() in ["available", "pre launch"]
+        if property.get("sales_status", {}).get("name", "").lower() in ["available"]
         and (district_filter is None or (property.get("district") and property["district"].get("name", "").lower() == district_filter))
         and (max_price is None or (property.get("low_price") is not None and property["low_price"] <= max_price))
         and (min_price is None or (property.get("low_price") is not None and property["low_price"] >= min_price))
@@ -124,22 +124,22 @@ def extract_filters(user_message: str, previous_filters: dict):
     - 🚨 اگر `min_price` مقدار جدیدی دارد، ولی `max_price` در پیام جدید ذکر نشده، مقدار `max_price` را **حتماً حذف کن** (حتی اگر مقدار قبلی وجود داشته باشد).
     - 🚨 اگر `max_price` مقدار جدیدی دارد، ولی `min_price` در پیام جدید ذکر نشده، مقدار `min_price` را **حتماً حذف کن** (حتی اگر مقدار قبلی وجود داشته باشد).
     - اگر `min_price` و `max_price` جدید داده نشده، مقدار قبلی را نگه دار.
+    - اگر اسامی مناطق یا نوع property به فارسی نوشته شد اول انگلیسیش کن بعد ذخیره کن
 
 
     خروجی باید یک شیء JSON باشد که شامل فیلدهای زیر باشد:
     - "new_search": true | false, 
     - "city" (مثلاً "Dubai")
     - "district" (اگر ذکر شده، مانند "JVC")
-    - "property_type" (مثلاً "آپارتمان"، "ویلا"، "پنت‌هاوس")
+    - "property_type" ("مثلاً "مسکونی"، "تجاری")
+    - "grouped_apartments" ("مثلاً "آپارتمان"، "ویلا"، "پنت‌هاوس)
     - "max_price" (اگر اشاره شده)
     - "min_price" (اگر اشاره شده)
     - "bedrooms" (اگر مشخص شده)
     - "bathrooms" (اگر مشخص شده)
     - "area_min" (اگر ذکر شده)
     - "area_max" (اگر ذکر شده)
-    - "furnished" (اگر اشاره شده، مقدار true یا false)
-    - "status" (مثلاً "جدید"، "آف پلن"، "آماده تحویل")
-
+    - "sale_status" ("مثلاً "موجود )
 
 
     **اگر هر یک از این فیلدها در درخواست کاربر ذکر نشده بود، مقدار آن را null قرار بده.**
@@ -241,7 +241,7 @@ def generate_ai_summary(properties, start_index=0):
     """ ارائه خلاصه کوتاه از املاک پیشنهادی """
 
     global last_properties_list, current_property_index
-    number_property = 1
+    number_property = 3
 
     if not properties:
         return "متأسفانه هیچ ملکی با این مشخصات پیدا نشد. لطفاً بازه قیمتی را تغییر دهید یا منطقه دیگری انتخاب کنید."
@@ -271,7 +271,7 @@ def generate_ai_summary(properties, start_index=0):
     - معرفی کلی ملک  
     - موقعیت جغرافیایی  
     - وضعیت فروش (آماده تحویل / در حال ساخت / فروخته شده)
-    - قیمت و متراژ
+    - قیمت به درهم و متراژ به فوت مربع
     - لینک مشاهده اطلاعات کامل ملک در سایت رسمی **[سایت Trunest](https://www.trunest.ae/property/{selected_properties[0]['id']})**
     
 
@@ -335,7 +335,7 @@ def generate_ai_details(property_number, detail_type=None):
         - معرفی کلی ملک و دلیل پیشنهاد آن
         - موقعیت جغرافیایی و دسترسی‌ها
         - وضعیت فروش (آماده تحویل / در حال ساخت / فروخته شده)
-        - قیمت و متراژ
+        - قیمت به درهم و متراژ به فوت مربع
         - امکانات برجسته
         - وضعیت ساخت و شرایط پرداخت
         - لینک مشاهده اطلاعات کامل ملک در سایت رسمی
@@ -347,6 +347,7 @@ def generate_ai_details(property_number, detail_type=None):
     )
 
     return response.choices[0].message.content
+
 
 
 from duckduckgo_search import DDGS
@@ -383,7 +384,42 @@ async def fetch_real_estate_trends(query):
     except Exception as e:
         print(f"❌ خطا در جستجو: {str(e)}")  # لاگ خطا
         raise HTTPException(status_code=500, detail=f"خطا در جستجو یا پردازش اطلاعات: {str(e)}")
-    
+
+
+async def fetch_real_estate_buying_guide():
+    """ ارائه اطلاعات کلی درباره نحوه خرید ملک در دبی """
+    try:
+        query = "How to buy property in Dubai for foreigners"
+        
+        # جستجو در اینترنت
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=5))
+        
+        if not results:
+            return "متأسفم، اطلاعاتی درباره نحوه خرید ملک در دبی پیدا نشد."
+
+        # ترکیب اطلاعات جستجو شده برای ارسال به OpenAI
+        search_summary = "\n".join([f"{r['title']}: {r['body']}" for r in results if 'body' in r])
+
+        prompt = f"""
+        اطلاعات زیر درباره نحوه خرید ملک در دبی از منابع مختلف جمع‌آوری شده است. لطفاً یک خلاصه مفید و مختصر از آن به زبان فارسی ارائه بده:
+
+        {search_summary}
+
+        **🔹 خلاصه‌ای کوتاه و مفید در ۳ الی ۴ جمله ارائه بده.**
+        """
+
+        ai_response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": prompt}],
+            max_tokens=150
+        )
+
+        return ai_response.choices[0].message.content.strip()
+
+    except Exception as e:
+        print(f"❌ خطا در جستجو: {str(e)}")  # لاگ خطا
+        raise HTTPException(status_code=500, detail=f"خطا در جستجو یا پردازش اطلاعات: {str(e)}")
 
 
 
@@ -414,6 +450,7 @@ async def real_estate_chatbot(user_message: str) -> str:
     - `details`: درخواست اطلاعات بیشتر درباره‌ی یکی از املاک قبلاً معرفی‌شده (مثلاً: "همین ملک را توضیح بده"، "درباره ملک ۲ توضیح بده"، "قیمت ملک ۱ چقدره؟"، "امکانات ملک ۲"، "قیمت ملک ۱ چقدره؟")
     - `more`: درخواست نمایش املاک بیشتر (مثلاً: "ملکای دیگه رو نشونم بده"،"ملک دیگه ای نشون بده"، "موردای بیشتری دارین؟")
     - `market`: سوال درباره وضعیت بازار مسکن در دبی
+    - `buying_guide`: سوال درباره نحوه خرید ملک در دبی (مثلاً: "چطور در دبی خانه بخرم؟"، "شرایط خرید ملک در دبی چیه؟"، "آیا خارجی‌ها می‌توانند در دبی ملک بخرند؟")
     - `search`: درخواست کلی برای جستجوی ملک (مثلاً: "خانه می‌خوام"، "یه ملک معرفی کن")
     - `unknown`: نامشخص
 
@@ -431,7 +468,7 @@ async def real_estate_chatbot(user_message: str) -> str:
 
 
     **خروجی فقط یک JSON شامل دو مقدار باشد:**  
-    - `"type"`: یکی از گزینه‌های `search`, `market`, `details`, `more`, `unknown`  
+    - `"type"`: یکی از گزینه‌های `search`, `market`, `buying_guide`, `details`, `more`, `unknown`  
     - `"detail_requested"`: اگر `details` باشد، مقدار `price`, `features`, `location`, `payment` باشد، وگرنه مقدار `null` باشد.
 
     """
@@ -465,10 +502,8 @@ async def real_estate_chatbot(user_message: str) -> str:
 
     print(f"🔹 نوع درخواست: {response_type}, جزئیات درخواستی: {detail_requested}")
 
-
     if "market" in response_type.lower():
         return await fetch_real_estate_trends("Dubai real estate market trends 2024 and 2025")
-        
 
     # ✅ **۳. تشخیص درخواست اطلاعات بیشتر درباره املاک قبلاً معرفی‌شده**
     if "details" in response_type.lower():
@@ -493,6 +528,8 @@ async def real_estate_chatbot(user_message: str) -> str:
     if "more" in response_type.lower():
         return generate_ai_summary(last_properties_list, start_index=current_property_index)
     
+    if "buying_guide" in response_type.lower():
+        return await fetch_real_estate_buying_guide()
 
     
     # ✅ **۵. اگر درخواست جستجوی ملک است، فیلترها را استخراج کرده و ملک پیشنهاد بده**
@@ -547,10 +584,35 @@ async def real_estate_chatbot(user_message: str) -> str:
         if extracted_data.get("min_price") is not None:
             filters["min_price"] = extracted_data.get("min_price")
 
-        if extracted_data.get("property_type"):
-            filters["property_type"] = extracted_data.get("property_type")
+        if extracted_data.get("bathrooms") is not None:
+            filters["bathrooms"] = extracted_data.get("bathrooms")
 
-        filters["property_status"] = ["Off Plan"]
+        if extracted_data.get("area_min") is not None:
+            filters["area_min"] = extracted_data.get("area_min")
+
+        if extracted_data.get("area_max") is not None:
+            filters["area_max"] = extracted_data.get("area_max")
+
+        if extracted_data.get("property_type") is not None:
+            property_type_name = extracted_data.get("property_type")
+
+            # تبدیل نام انگلیسی به ID
+            property_type_mapping = {
+                "Residential": {"id": 20, "name": "Residential"},
+                "Commercial": {"id": 3, "name": "Commercial"}
+            }
+
+            # مقدار `property_type` را به `id` تغییر بده
+            filters["property_type"] = property_type_mapping.get(property_type_name, property_type_name)
+
+        # if extracted_data.get("property_type"):
+        #     filters["property_type"] = extracted_data.get("property_type")
+
+        if extracted_data.get("grouped_apartments") is not None:
+            filters["grouped_apartments"] = extracted_data.get("grouped_apartments")
+
+        filters["property_status"] = 'Off Plan'
+        filters["sale_status"] = 'Available'
 
         print("🔹 فیلترهای اصلاح‌شده و ارسال‌شده به API:", filters)
         memory_state = filters.copy()
@@ -565,6 +627,7 @@ async def real_estate_chatbot(user_message: str) -> str:
 
     # ✅ **۶. اگر درخواست ناشناخته بود**
     return "متوجه نشدم که به دنبال چه چیزی هستید. لطفاً واضح‌تر بگویید که دنبال ملک هستید یا اطلاعات بیشتری درباره ملکی می‌خواهید."
+
 
 
 
