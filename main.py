@@ -185,42 +185,6 @@ def extract_filters(user_message: str, previous_filters: dict):
         if extracted_data.get("district") is None:
             extracted_data["district"] = previous_filters.get("district")
 
-        # for key, value in previous_filters.items():
-        #         if extracted_data.get(key) is None:
-        #             extracted_data[key] = value
-
-
-
-        
-        # if previous_filters:
-        #     # بررسی تغییر مقدار `min_price`
-        #     # if extracted_data.get("min_price") is not None:
-        #     #     if "max_price" in previous_filters and extracted_data.get("max_price") is None:
-        #     #         extracted_data["max_price"] = None  # حذف `max_price`
-
-        #     # # بررسی تغییر مقدار `max_price`
-        #     # if extracted_data.get("max_price") is not None:
-        #     #     if "min_price" in previous_filters and extracted_data.get("min_price") is None:
-        #     #         extracted_data["min_price"] = None  # حذف `min_price`
-
-        #     if extracted_data.get("min_price") is not None and extracted_data.get("max_price") is None:
-        #         extracted_data["max_price"] = None  
-
-        #     # اگر فقط `max_price` تغییر کرده باشد، `min_price` را حذف کن
-        #     if extracted_data.get("max_price") is not None and extracted_data.get("min_price") is None:
-        #         extracted_data["min_price"] = None  
-
-        #     # اگر کاربر مقدار جدیدی برای `min_price` و `max_price` داده، مقدار قبلی را جایگزین کن
-        #     if extracted_data.get("min_price") is not None and extracted_data.get("max_price") is not None:
-        #         extracted_data["min_price"] = extracted_data["min_price"]
-        #         extracted_data["max_price"] = extracted_data["max_price"]
-
-        #     if extracted_data.get("district") is None:  # اگر منطقه جدیدی ذکر نشده باشد
-        #         extracted_data["district"] = previous_filters.get("district")  # مقدار قبلی را نگه‌دار
-
-        #     for key, value in previous_filters.items():
-        #             if extracted_data.get(key) is None:
-        #                 extracted_data[key] = value  
 
 
         # ✅ پردازش رشته JSON به یک دیکشنری
@@ -234,13 +198,13 @@ def extract_filters(user_message: str, previous_filters: dict):
         print("❌ Unexpected Error:", e)
         return {}
 
-
+property_name_to_id = {}
 
 
 def generate_ai_summary(properties, start_index=0):
     """ ارائه خلاصه کوتاه از املاک پیشنهادی """
 
-    global last_properties_list, current_property_index
+    global last_properties_list, current_property_index, selected_properties, property_name_to_id
     number_property = 3
 
     if not properties:
@@ -253,9 +217,20 @@ def generate_ai_summary(properties, start_index=0):
     # ✅ انتخاب ۳ ملک بعدی
     selected_properties = properties[start_index:current_property_index]
     
-
+    print("📌 املاک دریافت‌شده برای نمایش:", selected_properties)
     if not selected_properties:
         return "✅ تمامی املاک نمایش داده شده‌اند و مورد جدیدی موجود نیست."
+    
+
+    for prop in selected_properties:
+        prop_name = prop.get("title", "").strip().lower()
+        prop_id = prop.get("id")
+
+        if prop_name and prop_id:
+            property_name_to_id[prop_name] = prop_id
+
+    print("📌 لیست املاک ذخیره‌شده پس از مقداردهی:", property_name_to_id)
+
 
     # ✅ پرامپت برای خلاصه‌سازی املاک
     prompt = f"""
@@ -293,15 +268,16 @@ def generate_ai_summary(properties, start_index=0):
 
 
 # ✅ تابع ارائه اطلاعات تکمیلی یک ملک خاص
-def generate_ai_details(property_number, detail_type=None):
+def generate_ai_details(property_id, detail_type=None):
     """ ارائه اطلاعات تکمیلی یک ملک خاص یا بخشی خاص از آن """
 
-    if not last_properties_list or property_number < 1 or property_number > len(last_properties_list):
-        return "❌ لطفاً شماره ملک را به‌درستی وارد کنید. مثال: 'ملک ۲'"
 
-    selected_property = last_properties_list[property_number - 1]
-    property_id = selected_property.get("id")
-    last_selected_property = selected_property
+    global property_name_to_id, selected_properties
+    selected_property = next((p for p in selected_properties if p.get("id") == property_id), None)
+    if not selected_property:
+        print(f"❌ هشدار: ملکی با آی‌دی {property_id} در selected_properties پیدا نشد!")
+        selected_property = {}  # **اگر اطلاعات قبلی وجود ندارد، دیکشنری خالی باشد**
+
 
     detailed_info = fetch_single_property(property_id)
 
@@ -356,8 +332,15 @@ from fastapi import HTTPException
 async def fetch_real_estate_trends(query):
     """ جستجو در اینترنت و خلاصه کردن اطلاعات بازار مسکن دبی """
     try:
+        if "دبی" in query or "امارات" in query or "Dubai" in query or "UAE" in query:
+            search_query = query  # تغییر نده، چون دبی در متن هست
+        else:
+            search_query = f"{query} در امارت"  # اضافه کردن "in Dubai"
+
+        print(f"🔍 **جستجوی دقیق:** {search_query}")  # برای دیباگ
+
         with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=5))  # استخراج نتایج
+            results = list(ddgs.text(search_query, max_results=5))  # استخراج نتایج
 
         if not results:
             return "متأسفم، اطلاعاتی درباره این موضوع پیدا نشد."
@@ -386,32 +369,46 @@ async def fetch_real_estate_trends(query):
         raise HTTPException(status_code=500, detail=f"خطا در جستجو یا پردازش اطلاعات: {str(e)}")
 
 
-async def fetch_real_estate_buying_guide():
-    """ ارائه اطلاعات کلی درباره نحوه خرید ملک در دبی """
+async def fetch_real_estate_buying_guide(user_question):
+    """ جستجو و ارائه پاسخ به سؤالات درباره خرید ملک، ویزا و مالیات در دبی """
+
     try:
-        query = "How to buy property in Dubai for foreigners"
-        
-        # جستجو در اینترنت
+        if "دبی" in user_question or "امارات" in user_question or "Dubai" in user_question or "UAE" in user_question:
+            search_query = user_question  # تغییر نده، چون دبی در متن هست
+        else:
+            search_query = f"{user_question} در امارات"  # اضافه کردن "in Dubai"
+
+        print(f"🔍 **جستجوی دقیق:** {search_query}")  # برای دیباگ
+
+
+        # # ✅ جستجوی مستقیم **سؤال کاربر**
+        # search_query = user_question  # 🔹 جستجوی همان پیام کاربر!
+        # print(f"🔍 **جستجوی گوگل برای:** {search_query}")  # برای دیباگ
+
+        # ✅ جستجو در اینترنت
         with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=5))
+            results = list(ddgs.text(search_query, max_results=5))
         
         if not results:
-            return "متأسفم، اطلاعاتی درباره نحوه خرید ملک در دبی پیدا نشد."
+            return "متأسفم، اطلاعاتی درباره این موضوع پیدا نشد."
 
-        # ترکیب اطلاعات جستجو شده برای ارسال به OpenAI
+        # ✅ ترکیب اطلاعات جستجو شده
         search_summary = "\n".join([f"{r['title']}: {r['body']}" for r in results if 'body' in r])
 
-        prompt = f"""
-        اطلاعات زیر درباره نحوه خرید ملک در دبی از منابع مختلف جمع‌آوری شده است. لطفاً یک خلاصه مفید و مختصر از آن به زبان فارسی ارائه بده:
+        # ✅ ارسال اطلاعات به GPT برای تولید خلاصه فارسی
+        response_prompt = f"""
+        اطلاعات زیر از منابع معتبر درباره "{user_question}" جمع‌آوری شده است:
 
         {search_summary}
 
-        **🔹 خلاصه‌ای کوتاه و مفید در ۳ الی ۴ جمله ارائه بده.**
+        **🔹 لطفاً یک پاسخ دقیق، کوتاه و مفید در ۳ الی ۴ جمله به زبان فارسی ارائه بده.**
+        - لحن پاسخ باید حرفه‌ای و کمک‌کننده باشد.
+        - اگر اطلاعات کافی نیست، جمله‌ای مانند "لطفاً به وب‌سایت‌های رسمی مراجعه کنید" اضافه کن.
         """
 
         ai_response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": prompt}],
+            messages=[{"role": "system", "content": response_prompt}],
             max_tokens=150
         )
 
@@ -423,8 +420,86 @@ async def fetch_real_estate_buying_guide():
 
 
 
+
+
+import json
+from fuzzywuzzy import process
+
+async def extract_property_identifier(user_message, property_name_to_id):
+    """با استفاده از هوش مصنوعی، شماره یا نام ملک را از پیام کاربر استخراج می‌کند و ID آن را برمی‌گرداند."""
+
+    # ✅ چاپ دیکشنری برای دیباگ
+    print(f"📌 دیکشنری property_name_to_id: {property_name_to_id}")
+
+    # **نام‌های املاک برای بررسی تطابق**
+    property_names = list(property_name_to_id.keys())
+    print(f"📌 لیست نام املاک برای تشخیص: {property_names}")
+
+    if not property_names:
+        return None  # اگر لیست خالی باشد، مقدار None برگردان
+
+    # **پرامپت برای تشخیص شماره یا نام ملک**
+    prompt = f"""
+    کاربر یک مشاور املاک در دبی را خطاب قرار داده و در مورد جزئیات یک ملک سؤال می‌کند.
+    
+    **لیست املاک موجود:**
+    {json.dumps(property_names, ensure_ascii=False)}
+
+    **متن کاربر:**
+    "{user_message}"
+
+    **آیا کاربر شماره یا نام یکی از املاک بالا را مشخص کرده است؟**
+    - اگر عددی ذکر شده (مثلاً ۲)، فقط همان عدد را در خروجی بده.  
+    - اگر نام یکی از املاک بالا ذکر شده، فقط نام آن را در خروجی بده.
+    - اگر کاربر عباراتی مانند "ملک دوم"، "ملک شماره ۲"، "دومین ملک" و... استفاده کرد، شماره ملک را به ترتیب در لیست بگیر.
+
+    **خروجی فقط شامل مقدار باشد:**
+    - یک عدد (مثلاً `2`)
+    - یا نام ملک (مثلاً `"Marriott Residences"`)
+    """
+
+    ai_response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "system", "content": prompt}],
+        max_tokens=30
+    )
+
+    extracted_info = ai_response.choices[0].message.content.strip()
+    print(f"📌 پاسخ AI برای تشخیص ملک: {extracted_info}")
+
+    if not extracted_info:
+        return None
+
+    # ✅ بررسی عددی بودن مقدار استخراج‌شده (اگر شماره ملک باشد)
+    if extracted_info.isdigit():
+        extracted_index = int(extracted_info) - 1  # **تبدیل شماره به ایندکس (1-based to 0-based)**
+        
+        if 0 <= extracted_index < len(property_names):  # **بررسی اینکه عدد در محدوده باشد**
+            property_name = property_names[extracted_index]
+            return property_name_to_id[property_name]  # **برگرداندن `id` ملک**
+        
+        return None  # اگر عدد معتبر نبود، مقدار `None` برگردد
+
+    # ✅ بررسی اینکه آیا نام ملک در دیکشنری هست؟
+    extracted_info = extracted_info.lower().strip()
+    if extracted_info in property_name_to_id:
+        return property_name_to_id[extracted_info]  # **برگرداندن `id` ملک**
+
+    # ✅ اگر تطابق ۱۰۰٪ نبود، از fuzzy matching استفاده کن
+    best_match, score = process.extractOne(extracted_info, property_names)
+    print(f"📌 بهترین تطابق fuzzy: {best_match} (امتیاز: {score})")
+
+    if score > 70:  # **اگر دقت بالا بود، مقدار را قبول کن**
+        return property_name_to_id[best_match]
+
+    return None  # **اگر هیچ تطابقی پیدا نشد، `None` برگردان**
+
+
+
+
 async def real_estate_chatbot(user_message: str) -> str:
     """ بررسی نوع پیام و ارائه پاسخ مناسب با تشخیص هوشمند """
+    print(f"📌  user message : {user_message}")
 
     global last_properties_list, current_property_index, memory_state
 
@@ -444,15 +519,60 @@ async def real_estate_chatbot(user_message: str) -> str:
     "{user_message}"
 
 
-     آیا این پیام یکی از موارد زیر است؟
+    **لطفاً مشخص کنید که پیام کاربر به کدام یک از این دسته‌ها تعلق دارد:**
 
-    - `search`: درخواست کلی برای جستجوی ملک (مثلاً: "خانه می‌خوام"، "یه ملک معرفی کن")
-    - `details`: درخواست اطلاعات بیشتر درباره‌ی یکی از املاک قبلاً معرفی‌شده (مثلاً: "همین ملک را توضیح بده"، "درباره ملک ۲ توضیح بده"، "قیمت ملک ۱ چقدره؟"، "امکانات ملک ۲"، "قیمت ملک ۱ چقدره؟")
-    - `more`: درخواست نمایش املاک بیشتر (مثلاً: "ملکای دیگه رو نشونم بده"،"ملک دیگه ای نشون بده"، "موردای بیشتری دارین؟")
-    - `market`: سوال درباره وضعیت بازار مسکن در دبی
-    - `buying_guide`: سوال درباره نحوه خرید ملک در دبی (مثلاً: "چطور در دبی خانه بخرم؟"، "شرایط خرید ملک در دبی چیه؟"، "آیا خارجی‌ها می‌توانند در دبی ملک بخرند؟")
-    - `search`: درخواست کلی برای جستجوی ملک (مثلاً: "خانه می‌خوام"، "یه ملک معرفی کن")
-    - `unknown`: نامشخص
+
+    ### **۱. `search` - درخواست جستجوی ملک**  
+    ✅ وقتی کاربر **به دنبال پیدا کردن یک ملک است**، مثلاً:  
+    - "خانه‌ای در جمیرا می‌خوام"  
+    - "یه آپارتمان با قیمت کمتر از دو میلیون درهم می‌خوام"  
+    - "بهترین پروژه‌های سرمایه‌گذاری رو معرفی کن"  
+
+    ❌ **این دسته را انتخاب نکنید اگر کاربر درباره روند خرید ملک در دبی سؤال کرده باشد.**  
+
+    ---
+
+    ### **۲. `details` - درخواست اطلاعات بیشتر درباره‌ی یک ملک خاص**  
+    ✅ وقتی کاربر می‌خواهد جزئیات یک ملک معرفی‌شده را بپرسد، مثلاً:  
+    - "درباره ملک شماره ۲ توضیح بده"  
+    - "امکانات ملک اول رو بگو"  
+    - "قیمت ملک مارینا رزیدنس چقدره؟"  
+
+    ---
+
+    ### **۳. `more` - درخواست نمایش املاک بیشتر**  
+    ✅ وقتی کاربر می‌خواهد املاک بیشتری ببیند، مثلاً:  
+    - "ملکای بیشتری بهم نشون بده"  
+    - "موردای دیگه‌ای داری؟"  
+
+    ---
+
+    ### **۴. `market` - سوال درباره وضعیت بازار مسکن در دبی**  
+    ✅ وقتی کاربر درباره روند کلی بازار املاک دبی سؤال کند، مثلاً:  
+    - "قیمت مسکن تو دبی تو ۲۰۲۵ چطوره؟"  
+    - "سرمایه‌گذاری در ملک تو دبی چطوره؟"  
+    - "روند قیمت‌ املاک تو چند سال آینده چجوریه؟"  
+
+    ---
+
+    ### **۵. `buying_guide` - سوال درباره نحوه خرید ملک در دبی**  
+    ✅ وقتی کاربر **درباره روند خرید ملک، قوانین، ویزا یا مالیات** سؤال می‌کند، مثلاً:  
+    - "چطور در دبی خانه بخرم؟"  
+    - "آیا خارجی‌ها می‌توانند در دبی ملک بخرند؟"  
+    - "شرایط دریافت ویزای سرمایه‌گذاری چیه؟"  
+    - "برای خرید ملک تو دبی باید مالیات بدم؟"  
+
+    ❌ **این دسته را انتخاب نکنید اگر کاربر دنبال پیدا کردن یک خانه خاص باشد.**  
+
+    ---
+
+    ### **۶. `unknown` - نامشخص**  
+    ✅ اگر پیام کاربر به هیچ‌کدام از موارد بالا مربوط نبود.  
+
+    ---
+
+    ### **⏳ مهم:**  
+    اگر پیام کاربر **نامشخص** بود یا **ممکن بود چند دسته را شامل شود**، **قبل از تصمیم‌گیری، بیشتر بررسی کن و عجله نکن.**  
 
 
     **اگر کاربر درباره جزئیات یک ملک سوال کرده باشد، نوع اطلاعاتی که می‌خواهد مشخص کن:**  
@@ -503,33 +623,26 @@ async def real_estate_chatbot(user_message: str) -> str:
     print(f"🔹 نوع درخواست: {response_type}, جزئیات درخواستی: {detail_requested}")
 
     if "market" in response_type.lower():
-        return await fetch_real_estate_trends("Dubai real estate market trends 2024 and 2025")
+        return await fetch_real_estate_trends(user_message)
 
     # ✅ **۳. تشخیص درخواست اطلاعات بیشتر درباره املاک قبلاً معرفی‌شده**
     if "details" in response_type.lower():
-        # اگر کاربر عددی برای شماره ملک مشخص کرده باشد
-        words = user_message.split()
-        property_number = None
-        for word in words:
-            if word.isdigit():
-                property_number = int(word)
-                break
+    # ✅ استخراج شماره یا نام ملک از پیام کاربر
+        property_id = await extract_property_identifier(user_message, property_name_to_id)
+        print(f"📌 مقدار property_identifier استخراج‌شده: {property_id}")
 
-        # اگر شماره ملک مشخص نشده باشد، فرض بر این است که کاربر آخرین ملک معرفی‌شده را می‌خواهد
-        if property_number is None and last_properties_list:
-            property_number = 1  # اولین ملک از لیست آخرین ملک‌های معرفی‌شده
+        if property_id is None:
+            return "❌ لطفاً شماره یا نام ملک را مشخص کنید."
 
-        if property_number is None:
-            return "❌ لطفاً شماره ملک را مشخص کنید. مثال: 'امکانات ملک ۲ را بگو'."
+        return generate_ai_details(property_id, detail_type=detail_requested)
 
-        return generate_ai_details(property_number, detail_type=detail_requested)
     
     
     if "more" in response_type.lower():
         return generate_ai_summary(last_properties_list, start_index=current_property_index)
     
     if "buying_guide" in response_type.lower():
-        return await fetch_real_estate_buying_guide()
+        return await fetch_real_estate_buying_guide(user_message)
 
     
     # ✅ **۵. اگر درخواست جستجوی ملک است، فیلترها را استخراج کرده و ملک پیشنهاد بده**
@@ -548,24 +661,6 @@ async def real_estate_chatbot(user_message: str) -> str:
             return "❌ OpenAI نتوانست اطلاعاتی را از پیام شما استخراج کند."
 
 
-        # if memory_state:
-        #     for key in memory_state.keys():
-        #         if key not in extracted_data or extracted_data[key] is None:
-        #             extracted_data[key] = memory_state[key]
-
-
-        # has_min_price = "min_price" in extracted_data and extracted_data["min_price"] is not None
-        # has_max_price = "max_price" in extracted_data and extracted_data["max_price"] is not None
-
-        # if has_min_price and not has_max_price:
-        #     extracted_data["max_price"] = None  # اگر فقط `min_price` مشخص شده بود، `max_price` را پاک کن
-
-        # if has_max_price and not has_min_price:
-        #     extracted_data["min_price"] = None  # اگر فقط `max_price` مشخص شده بود، `min_price` را پاک کن
-
-
-        # **به‌روزرسانی حافظه با اطلاعات جدید**
-        # memory_state = extracted_data.copy()
 
         filters = {}
 
