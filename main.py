@@ -119,7 +119,7 @@ def extract_filters(user_message: str, previous_filters: dict):
     ```
 
     **📌 قوانین پردازش:**
-    - اگر `city`, یا `property_type` جدیدی داده شده که با مقدار قبلی **فرق دارد**، مقدار `"new_search"` را `true` تنظیم کن.
+    - اگر `district`, `city`, یا `property_type` جدیدی داده شده که با مقدار قبلی **فرق دارد**، مقدار `"new_search"` را `true` تنظیم کن.
     - 🚨 **اگر کلمه "منطقه" بدون ذکر نام خاصی آمده باشد (مثل "همین منطقه")، مقدار `district` را تغییر نده و `new_search` را `false` بگذار.**  
     - **اگر کاربر از کلماتی مانند "قیمت بالاتر"، "گرون‌تر"، "بالای X" استفاده کند، مقدار `min_price` را تنظیم کن.**
     - **اگر کاربر از کلماتی مانند "قیمت پایین‌تر"، "ارزون‌تر"، "زیر X" استفاده کند، مقدار `max_price` را تنظیم کن .**
@@ -132,6 +132,10 @@ def extract_filters(user_message: str, previous_filters: dict):
     - وقتی کاربر بودجه میگه منظور max_price است
     - اگر پیام کاربر فقط اطلاعات تکمیلی (مثلاً قیمت، منطقه یا تعداد اتاق) را اضافه کرده باشد و تغییری در موارد قبلی نداده باشد، مقدار `"new_search"` را `false` بگذار.
     - **🚨 مهم:** `questions_needed` را فقط برای اطلاعاتی که هنوز موجود نیستند برگردان، نه برای اطلاعاتی که قبلاً داده شده‌اند.
+    - **🚨 اگر کاربر منطقه جدیدی گفته و `district` تغییر کرده، حتماً مقدار جدید را جایگزین مقدار قبلی کن.**
+    - **🚨 تو تشخیص 'district' دقت کن **
+
+    
 
     
     - **اگر اطلاعات ناقص است، لیست سؤالات موردنیاز برای تکمیل را بده.**
@@ -141,14 +145,14 @@ def extract_filters(user_message: str, previous_filters: dict):
     - "search_ready": true | false
     - "questions_needed": ["بودجه شما چقدر است؟", "چه تعداداتاق خواب مدنظرتان هست؟", "در کدام منطقه ملک می‌خواهید؟"]
     - "city" (مثلاً "Dubai")
-    - "district" (اگر ذکر شده، مانند "JVC")
+    - "district" (منطقه اگر ذکر شده، مانند "JVC")
     - "property_type" ("مثلاً "مسکونی"، "تجاری")
     - "apartmentType" ("مثلاً "apartment"، "villa"، "penthouse)
     - "max_price" (اگر اشاره شده)
     - "min_price" (اگر اشاره شده)
     - "bedrooms" (اگر مشخص شده. مثلا میتونه عدد باشه اگر کاربر تعداد اتاق خواب رو بگه یا میتونه نوشته باشه مثلا کاربر بگه استودیو میخوام اونوقت studio رو ذخیره کن)
-    - "area_min" (اگر ذکر شده)
-    - "area_max" (اگر ذکر شده)
+    - "min_area" (اگر ذکر شده)
+    - "max_area" (اگر ذکر شده)
     - "sales_status" ("مثلاً "موجود )
 
 
@@ -1080,14 +1084,17 @@ async def real_estate_chatbot(user_message: str) -> str:
         # if extracted_data.get("bathrooms") is not None:
         #     filters["bathrooms"] = extracted_data.get("bathrooms")
 
-        if extracted_data.get("area_min") is not None:
-            filters["area_min"] = extracted_data.get("area_min")
+        if extracted_data.get("min_area") is not None:
+            filters["min_area"] = extracted_data.get("min_area")
 
-        if extracted_data.get("area_max") is not None:
-            filters["area_max"] = extracted_data.get("area_max")
+        if extracted_data.get("max_area") is not None:
+            filters["max_area"] = extracted_data.get("max_area")
 
         if extracted_data.get("property_type") is not None:
             property_type_name = extracted_data.get("property_type")
+
+            if isinstance(property_type_name, dict):
+                property_type_name = property_type_name.get("name", "")
 
             # تبدیل نام انگلیسی به ID
             property_type_mapping = {
@@ -1137,10 +1144,15 @@ async def real_estate_chatbot(user_message: str) -> str:
         print("🔹 فیلترهای اصلاح‌شده و ارسال‌شده به API:", filters)
         memory_state = filters.copy()
 
+
         properties = filter_properties(memory_state)
 
+        memory_state["bedrooms"] = extracted_data.get("bedrooms")
+
+        print("🔹 memory:", memory_state)
+
         print(f"🔹 تعداد املاک دریافت‌شده از API: {len(properties)}")
-        print(properties[:3])
+        # print(properties[:3])
 
         response = generate_ai_summary(properties)
 
