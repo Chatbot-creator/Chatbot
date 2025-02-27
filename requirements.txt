@@ -7,3 +7,5 @@ pandas
 pydantic
 cachetools
 duckduckgo_search
+fuzzywuzzy
+python-Levenshtein
