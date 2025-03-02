@@ -31,7 +31,7 @@ HEADERS = {
 
 import random
 memory_state = {}
-# type_search = {}
+last_property_id = None
 last_properties_list = []
 last_selected_property = None  # ✅ ذخیره آخرین ملکی که کاربر در مورد آن اطلاعات بیشتری خواسته
 current_property_index = 0  # ✅ نگه‌داری ایندکس برای نمایش املاک بعدی
@@ -372,6 +372,7 @@ def generate_ai_details(property_id, detail_type=None):
         - موقعیت جغرافیایی و دسترسی‌ها
         - وضعیت فروش (آماده تحویل / در حال ساخت / فروخته شده)
         - شروع قیمت به درهم و حداقل مساحت حتما به فوت مربع
+        - قیمت انواع واحد ها
         - امکانات برجسته
         - وضعیت ساخت و شرایط پرداخت
         - لینک مشاهده اطلاعات کامل ملک در سایت رسمی
@@ -1080,8 +1081,16 @@ async def real_estate_chatbot(user_message: str) -> str:
         property_id = await extract_property_identifier(user_message, property_name_to_id)
         print(f"📌 مقدار property_identifier استخراج‌شده: {property_id}")
 
+        global last_property_id
         if property_id is None:
-            return "❌ لطفاً شماره یا نام ملک را مشخص کنید."
+            if last_property_id is not None:
+                property_id = last_property_id  # استفاده از ملک قبلی
+                print(f"ℹ️ استفاده از آخرین ملک پرسیده‌شده: {property_id}")
+            else:
+                return "❌ لطفاً شماره یا نام ملک را مشخص کنید."
+
+        # ✅ ذخیره این ملک به عنوان آخرین ملکی که درباره‌اش سوال شده است
+        last_property_id = property_id
 
         return generate_ai_details(property_id, detail_type=detail_requested)
 
