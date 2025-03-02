@@ -765,12 +765,15 @@ async def process_purchase_request(user_message: str) -> str:
 
 
 
-def find_districts_by_budget(max_price, bedrooms=None, apartment_typ=None):
+def find_districts_by_budget(max_price, bedrooms=None, apartment_typ=None, min_price=None):
     """جستجوی مناطق مناسب با توجه به بودجه و تعداد اتاق‌خواب"""
     
     filters = {
         "max_price": max_price
     }
+    if min_price is not None:
+        filters["min_price"] = min_price
+
     if apartment_typ is not None:
         apartment_typ = str(apartment_typ).strip().title()  # تبدیل به فرمت استاندارد
                 # ✅ دیکشنری نگاشت نوع آپارتمان به `id`
@@ -1094,13 +1097,14 @@ async def real_estate_chatbot(user_message: str) -> str:
         extracted_data = extract_filters(user_message, memory_state)
         memory_state.update(extracted_data)
         max_price = extracted_data.get("max_price")
+        min_price = extracted_data.get("min_price")
         apartment_typ = extracted_data.get("apartmentType")
         bedrooms = extracted_data.get("bedrooms")
 
         if max_price is None:
-            return "❌ لطفاً حداکثر بودجه خود را مشخص کنید."
+            return "❌ لطفاً بودجه خود را مشخص کنید."
 
-        return find_districts_by_budget(max_price, bedrooms, apartment_typ)
+        return find_districts_by_budget(max_price, bedrooms, apartment_typ, min_price)
 
 
 
