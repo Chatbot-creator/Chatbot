@@ -19,8 +19,8 @@
         }
         .chatbox {
             background-color: #fff;
-            width: 400px;
-            height: 500px;
+            width: 600px;
+            height: 700px;
             border-radius: 10px;
             border: 1px solid #ccc;
             display: flex;
@@ -39,6 +39,14 @@
             direction: rtl;
             text-align: right;
             font-size: 14px;
+        }
+        .property-image {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+            display: block;
         }
         .message {
             padding: 10px;
@@ -113,7 +121,7 @@
             document.getElementById("chatlog").innerHTML += `<p class="message user-message"><b>شما:</b> ${userInput}</p>`;
 
             // ارسال پیام به سرور
-            let response = await fetch("https://studious-fortnight-4jvp56j6vpw4fqv6q-8000.app.github.dev/chat", {
+            let response = await fetch("https://vigilant-dollop-4jvp56j6v4pw27g4v-8000.app.github.dev/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message: userInput })
@@ -133,14 +141,31 @@
         }
 
         function formatResponse(responseText) {
-            let paragraphs = responseText.split("\n\n"); 
-            let formattedText = paragraphs.map(p => `<p class="message bot-message">${p}</p>`).join('<hr class="separator">'); 
+            let paragraphs = responseText.split("\n\n");
+            let formattedText = paragraphs.map(p => {
+                // بررسی اگر پاراگراف شامل `[IMAGE_URL]` باشد
+                if (p.includes("[IMAGE_URL]")) {
+                    let parts = p.split("[IMAGE_URL]");
+                    let imageUrl = parts[1].split(" ")[0];  // استخراج لینک تصویر
+                    let textPart = parts[1].replace(imageUrl, "").trim(); // حذف لینک از متن
+
+                    return `
+                        <div class="message bot-message">
+                            <img src="${imageUrl}" alt="تصویر ملک" class="property-image">
+                            <p>${textPart}</p>
+                        </div>
+                    `;
+                } else {
+                    return `<p class="message bot-message">${p}</p>`;
+                }
+            }).join('<hr class="separator">');
+
             return formattedText;
         }
 
         // ✅ دریافت پیام خوش‌آمدگویی هنگام لود صفحه
         window.onload = async function() {
-            let response = await fetch("https://studious-fortnight-4jvp56j6vpw4fqv6q-8000.app.github.dev/chat", {
+            let response = await fetch("https://vigilant-dollop-4jvp56j6v4pw27g4v-8000.app.github.dev/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message: "" }) // فرستادن پیام خالی برای دریافت پیام خوش‌آمدگویی
