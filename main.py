@@ -745,11 +745,11 @@ async def compare_properties(user_message: str) -> str:
     # ✅ پردازش داده‌ها برای مقایسه
     comparison_prompt = f"""
     شما یک مشاور املاک حرفه‌ای در دبی به زبان فارسی هستید. در ادامه اطلاعات چند ملک آورده شده است. لطفاً آن‌ها را از نظر:
-    - **قیمت** 
-    - **متراژ و تعداد اتاق خواب** 
-    - **موقعیت جغرافیایی**  
-    - **وضعیت فروش (در حال ساخت یا آماده تحویل)و تاریخ تحویل**  
-    - **ویژگی‌های برجسته**  
+    - 💲 قیمت 
+    - 📏 متراژ و تعداد اتاق خواب 
+    - 📍 موقعیت جغرافیایی  
+    - 🏗 وضعیت فروش (در حال ساخت یا آماده تحویل)و تاریخ تحویل  
+    - 🏆ویژگی‌های برجسته  
 
     مقایسه کنید و در نهایت **بهترین گزینه را برای خرید معرفی کنید**.
 
@@ -1417,26 +1417,31 @@ async def real_estate_chatbot(user_message: str) -> str:
                 print(f"❌ خطا در پردازش تاریخ: {e}")
                 filters["delivery_date"] = None  
 
+
         # ✅ اضافه کردن `payment_plan`
         if extracted_data.get("payment_plan") is not None:
-            if extracted_data["payment_plan"].lower() == "yes":
+            value = str(extracted_data["payment_plan"]).lower()  # تبدیل مقدار به رشته و کوچک کردن حروف
+            if value == "yes" or value == "1":  # اگر مقدار yes یا 1 بود
                 filters["payment_plan"] = 1
-            elif extracted_data["payment_plan"].lower() == "no":
+            elif value == "no" or value == "0":  # اگر مقدار no یا 0 بود
                 filters["payment_plan"] = 0
+
 
         # ✅ اضافه کردن `post_delivery`
         if extracted_data.get("post_delivery") is not None:
-            if extracted_data["post_delivery"].lower() == "yes":
+            value = str(extracted_data["post_delivery"]).lower()  # تبدیل مقدار به رشته و کوچک کردن حروف
+            if value == "yes" or value == "1":  # اگر مقدار yes یا 1 بود
                 filters["post_delivery"] = 1
-            elif extracted_data["post_delivery"].lower() == "no":
+            elif value == "no" or value == "0":  # اگر مقدار no یا 0 بود
                 filters["post_delivery"] = 0
 
 
-        # ✅ اضافه کردن `guarantee_rental_guarantee`
+
         if extracted_data.get("guarantee_rental_guarantee") is not None:
-            if extracted_data["guarantee_rental_guarantee"].lower() == "yes":
+            value = str(extracted_data["guarantee_rental_guarantee"]).lower()  # تبدیل مقدار به رشته و کوچک کردن حروف
+            if value == "yes" or value == "1":  # اگر مقدار yes یا 1 بود
                 filters["guarantee_rental_guarantee"] = 1
-            elif extracted_data["guarantee_rental_guarantee"].lower() == "no":
+            elif value == "no" or value == "0":  # اگر مقدار no یا 0 بود
                 filters["guarantee_rental_guarantee"] = 0
 
 
@@ -1558,6 +1563,7 @@ async def real_estate_chatbot(user_message: str) -> str:
 
             
         filters["property_status"] = 'Off Plan'
+        # filters["property_status"] = [2]
         filters["sales_status"] = [1]
         # filters["sales_status"] = 'Available'
         # filters["apartments"] = [12]
