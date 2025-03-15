@@ -11,8 +11,14 @@ import time
 from cachetools import TTLCache, cached
 from datetime import datetime, timezone
 import re
+import aio_pika
+import asyncio
+import redis.asyncio as redis
+import aiohttp
 
 cache = TTLCache(maxsize=100, ttl=600)
+
+redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
@@ -30,61 +36,304 @@ HEADERS = {
 }
 
 import random
+
 memory_state = {}
 last_property_id = None
 last_properties_list = []
 last_selected_property = None  # ✅ ذخیره آخرین ملکی که کاربر در مورد آن اطلاعات بیشتری خواسته
 current_property_index = 0  # ✅ نگه‌داری ایندکس برای نمایش املاک بعدی
 
-# ✅ تابع فیلتر املاک از API
-def filter_properties(filters):
+async def fetch_and_cache_properties():
+    """ دریافت و ذخیره املاک در کش Redis با استفاده از getproperty API """
 
-    print("🔹 فیلترهای ارسال‌شده به API:", filters)
-    # filters["cache_bypass"] = random.randint(1000, 9999)
-    """ جستجوی املاک بر اساس فیلترهای کاربر """
-    response = requests.post(f"{ESTATY_API_URL}/filter", json=filters, headers=HEADERS)
+    try:
+        print("🚀 دریافت لیست املاک از API filter...")
 
-    # print("🔹 وضعیت پاسخ API:", response.status_code)
-    response_data = response.json()
-    # print("🔹 داده‌های دریافت‌شده از API:", response_data)
+        # مرحله 1: دریافت لیست املاک از API فیلتر
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{ESTATY_API_URL}/filter", json={}, headers=HEADERS) as response:
+                if response.status != 200:
+                    print(f"❌ خطا در دریافت لیست املاک. کد وضعیت: {response.status}")
+                    return
+                
+                data = await response.json()
+                properties = data.get("properties", [])
+
+        print(f"🔹 تعداد املاک دریافت‌شده از API: {len(properties)}")
+
+        if not properties:
+            print("⚠️ هیچ ملکی دریافت نشد.")
+            return
+        
+        redis_client = await redis.from_url("redis://localhost")
+
+        # مرحله 2: دریافت اطلاعات کامل هر ملک با `getproperty`
+        # for prop in properties:
+        for index, prop in enumerate(properties, start=1):
+            property_id = prop.get("id")
+            if not property_id:
+                continue
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{ESTATY_API_URL}/getProperty", json={"id": property_id}, headers=HEADERS) as prop_response:
+                    if prop_response.status != 200:
+                        print(f"⚠️ خطا در دریافت اطلاعات ملک {property_id}. کد وضعیت: {prop_response.status}")
+                        continue
+                    
+                    full_property_data = await prop_response.json()
+
+            # ذخیره در Redis
+            await redis_client.set(f"property:{property_id}", json.dumps(full_property_data))
+            print(f"✅ ملک {property_id} با اطلاعات کامل در Redis ذخیره شد.")
+
+            # ✅ توقف بعد از هر ۳۰۰ درخواست برای جلوگیری از Timeout
+            if index % 200 == 0:
+                print("⏳ توقف ثانیه‌ای برای جلوگیری از Timeout...")
+                await asyncio.sleep(60)
+
+        print("✅ همه املاک با اطلاعات کامل در Redis ذخیره شدند.")
+
+    except Exception as e:
+        print(f"❌ خطای غیرمنتظره در fetch_and_cache_properties(): {e}")
 
 
-    ####
-    # filtered_properties = [
-    #     property for property in response_data.get("properties", [])
-    #     if property.get("sales_status", {}).get("name", "").lower() in ["available", "pre launch"]
-    # ]
 
 
-    ##########
-    # فیلتر کردن املاک بر اساس وضعیت فروش و منطقه
-    district_filter = filters.get("district")
-    if district_filter:
-        district_filter = district_filter.lower()
+# **🔹 پردازش پیام‌های RabbitMQ و ذخیره داده‌ها در Redis**
+async def process_message(message):
+    """ پردازش پیام‌های RabbitMQ برای بروزرسانی داده‌های Redis """
+    async with message.process():
+        try:
+            new_properties = json.loads(message.body)
+            print(f"🔄 دریافت داده‌های جدید از RabbitMQ: {len(new_properties)} ملک")
 
-    # مقداردهی فیلتر قیمت
-    max_price = filters.get("max_price")
-    min_price = filters.get("min_price")
+            redis_client = await redis.from_url("redis://localhost")
 
-    # فیلتر کردن املاک بر اساس وضعیت فروش، منطقه و قیمت
-    filtered_properties = [
-        property for property in response_data.get("properties", [])
-        if property.get("sales_status", {}).get("name", "").lower() in ["available"]
-        and (district_filter is None or (property.get("district") and property["district"].get("name", "").lower() == district_filter))
-        and (max_price is None or (property.get("low_price") is not None and property["low_price"] <= max_price))
-        and (min_price is None or (property.get("low_price") is not None and property["low_price"] >= min_price))
-    ]
+            for prop in new_properties:
+                property_id = prop.get("id")
+                if property_id:
+                    await redis_client.setex(f"property:{property_id}", 600, json.dumps(prop))  # ذخیره 10 دقیقه‌ای
 
+            print("✅ داده‌های جدید در Redis بروزرسانی شدند.")
+
+        except Exception as e:
+            print(f"❌ خطا در پردازش پیام RabbitMQ: {e}")
 
 
-    ##########
+# **🔹 اجرای مصرف‌کننده RabbitMQ برای دریافت داده‌های جدید**
+async def start_rabbitmq_consumer():
+    """ راه‌اندازی مصرف‌کننده RabbitMQ برای دریافت داده‌های جدید """
+    connection = await aio_pika.connect_robust("amqp://guest:guest@localhost/")
+    channel = await connection.channel()
+    queue = await channel.declare_queue("estaty_updates")
 
-    # print(f"🔹 تعداد املاک قابل فروش پس از فیلتر: {len(filtered_properties)}")
-    return filtered_properties
+    async with queue.iterator() as queue_iter:
+        async for message in queue_iter:
+            await process_message(message)
 
-    ####
 
-    # return response.json().get("properties", [])
+async def filter_properties(filters):
+    """ همیشه فقط از Redis جستجو کن، نه API """
+
+    print("🔹 فیلترهای ورودی:", filters)
+
+    cached_properties = await get_properties_from_redis(filters)
+
+    if cached_properties:
+        print(f"✅ {len(cached_properties)} ملک از Redis پیدا شد.")
+        return cached_properties
+
+    print("❌ هیچ ملکی در Redis پیدا نشد! شاید داده‌های API هنوز ذخیره نشده‌اند.")
+    return []
+
+
+# ✅ ذخیره ملک‌ها در Redis
+async def store_properties_in_redis(properties):
+    """ ذخیره اطلاعات ملک‌ها در Redis """
+    for prop in properties:
+        property_id = prop.get("id")
+        if property_id:
+            await redis_client.setex(f"property:{property_id}", 600, json.dumps(prop))  # ذخیره 10 دقیقه‌ای
+
+    
+    # بررسی تعداد کلیدها بعد از ذخیره‌سازی
+    keys = await redis_client.keys("property:*")
+    print(f"🔍 تعداد کلیدهای ذخیره‌شده بعد از ذخیره‌سازی: {len(keys)}")
+
+
+
+async def get_properties_from_redis(filters):
+    """ دریافت داده از Redis و اعمال فیلترها """
+
+    redis_client = await redis.from_url("redis://localhost")
+    keys = await redis_client.keys("property:*")  # گرفتن تمام کلیدهای مربوط به املاک
+    print(f"🔍 کلیدهای ذخیره‌شده در Redis: {keys}")  
+
+    if not keys:
+        print("❌ هیچ کلیدی در Redis پیدا نشد.")
+        return []
+
+    # استخراج داده‌ها از Redis و بررسی ساختار جدید
+    properties = []
+    for key in keys:
+        property_data = json.loads(await redis_client.get(key))
+        if "property" in property_data:  # بررسی وجود `property` در داده‌ها
+            properties.append(property_data["property"])
+
+    print(f"🔍 تعداد کل املاک در Redis: {len(properties)}")
+
+    if not properties:
+        print("❌ هیچ ملکی در Redis پیدا نشد.")
+        return []
+
+    print(f"🔹 فیلترهای ورودی: {filters}")
+
+    filtered_properties = properties  # شروع با کل املاک
+
+    print(f"📊 تعداد کل املاک قبل از فیلتر: {len(filtered_properties)}")
+
+    # ✅ فیلتر شهر بر اساس نام
+    if filters.get("city"):
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if prop.get("city") and prop["city"].get("name", "").lower() == filters["city"].lower()
+        ]
+        print(f"🔍 بعد از فیلتر شهر: {len(filtered_properties)}")
+
+    # ✅ فیلتر محله (district) بر اساس **نام**
+    if filters.get("district"):
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if prop.get("district") and prop["district"].get("name", "").lower() == filters["district"].lower()
+        ]
+        print(f"🔍 بعد از فیلتر محله: {len(filtered_properties)}")
+
+    # ✅ فیلتر محدوده قیمتی (چک کردن `None`)
+    if filters.get("min_price"):
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if prop.get("low_price") is not None and prop["low_price"] >= filters["min_price"]
+        ]
+        print(f"🔍 بعد از فیلتر حداقل قیمت: {len(filtered_properties)}")
+
+    if filters.get("max_price"):
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if prop.get("low_price") is not None and prop["low_price"] <= filters["max_price"]
+        ]
+        print(f"🔍 بعد از فیلتر حداکثر قیمت: {len(filtered_properties)}")
+
+    # ✅ فیلتر محدوده متراژ (چک کردن `None`)
+    if filters.get("min_area"):
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if prop.get("min_area") is not None and prop["min_area"] >= filters["min_area"]
+        ]
+        print(f"🔍 بعد از فیلتر حداقل متراژ: {len(filtered_properties)}")
+
+    if filters.get("max_area"):
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if prop.get("min_area") is not None and prop["min_area"] <= filters["max_area"]
+        ]
+        print(f"🔍 بعد از فیلتر حداکثر متراژ: {len(filtered_properties)}")
+
+    # ✅ فیلتر وضعیت فروش (sales_status) بر اساس **ID**
+    if filters.get("sales_status"):
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if prop.get("sales_status") and prop["sales_status"].get("id") in filters["sales_status"]
+        ]
+        print(f"🔍 بعد از فیلتر وضعیت فروش: {len(filtered_properties)}")
+        
+
+
+    # ✅ فیلتر property_type بر اساس **ID یا نام**
+    if filters.get("property_type"):
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if prop.get("property_type") and (
+                (isinstance(filters["property_type"], dict) and prop["property_type"].get("id") == filters["property_type"].get("id")) or
+                (isinstance(filters["property_type"], int) and prop["property_type"].get("id") == filters["property_type"])
+            )
+        ]
+        print(f"🔍 بعد از فیلتر نوع ملک: {len(filtered_properties)}")
+
+
+
+    # ✅ فیلتر `apartmentTypes` بر اساس **نام (Unit_Type)**
+    if filters.get("apartmentTypes"):
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if any(
+                apt.get("Unit_Type", "").strip().lower() in 
+                [t.lower() for t in filters["apartmentTypes"]]
+                for apt in prop.get("grouped_apartments", [])
+            )
+        ]
+        print(f"🔍 بعد از فیلتر نوع آپارتمان (Unit_Type): {len(filtered_properties)}")
+
+
+    # ✅ فیلتر `apartments` بر اساس **تعداد اتاق خواب (Rooms)**
+    if filters.get("apartments"):
+        filtered_properties = [
+            prop for prop in filtered_properties
+            if any(
+                str(apt.get("Rooms", "")).strip() in 
+                [str(room).strip() for room in filters["apartments"]]
+                for apt in prop.get("grouped_apartments", [])
+            )
+        ]
+        print(f"🔍 بعد از فیلتر تعداد اتاق خواب (Rooms): {len(filtered_properties)}")
+
+
+        # ✅ فیلتر `payment_plan`
+    if filters.get("payment_plan") is not None:
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if prop.get("payment_plan") == filters["payment_plan"]
+        ]
+        print(f"🔍 بعد از فیلتر شرایط پرداخت (payment_plan): {len(filtered_properties)}")
+
+    # ✅ فیلتر `post_delivery`
+    if filters.get("post_delivery") is not None:
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if prop.get("post_delivery") == filters["post_delivery"]
+        ]
+        print(f"🔍 بعد از فیلتر پرداخت بعد از تحویل (post_delivery): {len(filtered_properties)}")
+
+    # ✅ فیلتر `guarantee_rental_guarantee`
+    if filters.get("guarantee_rental_guarantee") is not None:
+        filtered_properties = [
+            prop for prop in filtered_properties 
+            if prop.get("guarantee_rental_guarantee") == filters["guarantee_rental_guarantee"]
+        ]
+        print(f"🔍 بعد از فیلتر ضمانت اجاره (guarantee_rental_guarantee): {len(filtered_properties)}")
+
+    # # ✅ فیلتر امکانات (facilities) بر اساس **ID**
+    # if filters.get("facilities"):
+    #     facility_ids = list(map(int, filters["facilities"]))  # تبدیل همه مقادیر به عدد صحیح (int)
+        
+    #     filtered_properties = [
+    #         prop for prop in filtered_properties 
+    #         if any(
+    #             facility.get("facility_id") in facility_ids
+    #             for facility in prop.get("property_facilities", [])
+    #         )
+    #     ]
+    #     print(f"🔍 بعد از فیلتر امکانات (facilities): {len(filtered_properties)}")
+
+
+
+    print(f"✅ تعداد املاک باقی‌مانده بعد از همه فیلترها: {len(filtered_properties)}")
+
+    return filtered_properties if filtered_properties else []
+
+
+
+
+
 
 # ✅ تابع دریافت اطلاعات کامل یک ملک خاص
 def fetch_single_property(property_id):
@@ -93,8 +342,6 @@ def fetch_single_property(property_id):
     return response.json().get("property", {})
 
 
-# property_data = fetch_single_property(1560)  # جایگذاری ID یک ملک واقعی
-# print("🔹 اطلاعات ملک دریافت‌شده از API:", property_data)
 
 
 
@@ -292,10 +539,10 @@ def generate_ai_summary(properties, start_index=0):
     for prop in selected_properties:
         prop_name = prop.get("title", "").strip().lower()
         prop_id = prop.get("id")
-    # ✅ تبدیل تاریخ تحویل اگر مقدار دارد
-        if "delivery_date" in prop and isinstance(prop["delivery_date"], str):
-            unix_timestamp = int(prop["delivery_date"])  # تبدیل رشته به عدد
-            prop["delivery_date"] = datetime.fromtimestamp(unix_timestamp, tz=timezone.utc).strftime('%Y-%m-%d')
+    # # ✅ تبدیل تاریخ تحویل اگر مقدار دارد
+    #     if "delivery_date" in prop and isinstance(prop["delivery_date"], str):
+    #         unix_timestamp = int(prop["delivery_date"])  # تبدیل رشته به عدد
+    #         prop["delivery_date"] = datetime.fromtimestamp(unix_timestamp, tz=timezone.utc).strftime('%Y-%m-%d')
 
 
         if prop_name and prop_id:
@@ -1297,43 +1544,47 @@ async def real_estate_chatbot(user_message: str) -> str:
             # else:
             #     print(f"⚠️ نام منطقه '{district_i}' به هیچ منطقه‌ای تطابق نداشت!")
 
-
         if extracted_data.get("bedrooms") is not None:
             bedrooms_count = str(extracted_data["bedrooms"]).strip().title()  # مقدار را به رشته تبدیل کن
 
-            bedrooms_mapping = {
-            "1": 10,
-            "1.5": 23,
-            "2": 11,
-            "2.5": 24,
-            "3": 12,
-            "3.5": 25,
-            "4": 13,
-            "4.5": 26,
-            "5": 14,
-            "5.5": 27,
-            "6": 15,
-            "6.5": 28,
-            "7": 16,
-            "7.5": 29,
-            "8": 17,
-            "9": 18,
-            "10": 19,
-            "11": 22,
-            "Studio": 9,       
-            "Penthouse": 34,   
-            "Retail": 31,      
-            "Office": 20,      
-            "Showroom": 35,    
-            "Store": 30,       
-            "Suite": 32,       
-            "Hotel Room": 33,   
-            "Full Floor": 36,  
-            "Land / Plot": 21  
-        }
+            # ✅ مقدار `filters["apartments"]` حالا مقدار `Rooms` را ذخیره می‌کند، نه `ID`
+            filters["apartments"] = [bedrooms_count]
+        # if extracted_data.get("bedrooms") is not None:
+        #     bedrooms_count = str(extracted_data["bedrooms"]).strip().title()  # مقدار را به رشته تبدیل کن
 
-            # مقدار `property_type` را به `id` تغییر بده
-            filters["apartments"] = [bedrooms_mapping.get(bedrooms_count, bedrooms_count)]
+        #     bedrooms_mapping = {
+        #     "1": 10,
+        #     "1.5": 23,
+        #     "2": 11,
+        #     "2.5": 24,
+        #     "3": 12,
+        #     "3.5": 25,
+        #     "4": 13,
+        #     "4.5": 26,
+        #     "5": 14,
+        #     "5.5": 27,
+        #     "6": 15,
+        #     "6.5": 28,
+        #     "7": 16,
+        #     "7.5": 29,
+        #     "8": 17,
+        #     "9": 18,
+        #     "10": 19,
+        #     "11": 22,
+        #     "Studio": 9,       
+        #     "Penthouse": 34,   
+        #     "Retail": 31,      
+        #     "Office": 20,      
+        #     "Showroom": 35,    
+        #     "Store": 30,       
+        #     "Suite": 32,       
+        #     "Hotel Room": 33,   
+        #     "Full Floor": 36,  
+        #     "Land / Plot": 21  
+        # }
+
+        #     # مقدار `property_type` را به `id` تغییر بده
+        #     filters["apartments"] = [bedrooms_mapping.get(bedrooms_count, bedrooms_count)]
 
         if extracted_data.get("max_price") is not None:
             filters["max_price"] = extracted_data.get("max_price")
@@ -1368,33 +1619,38 @@ async def real_estate_chatbot(user_message: str) -> str:
         # if extracted_data.get("property_type"):
         #     filters["property_type"] = extracted_data.get("property_type")
 
+        # if extracted_data.get("apartmentType") is not None:
+        #     apartment_type = str(extracted_data["apartmentType"]).strip().title()  # تبدیل به فرمت استاندارد
+        #     # ✅ دیکشنری نگاشت نوع آپارتمان به `id`
+        #     apartment_type_mapping = {
+        #         "Apartment": 1,
+        #         "Building": 31,
+        #         "Duplex": 27,
+        #         "Full Floor": 4,
+        #         "Hotel": 32,
+        #         "Hotel Apartment": 8,
+        #         "Land / Plot": 6,
+        #         "Loft": 34,
+        #         "Office": 7,
+        #         "Penthouse": 10,
+        #         "Retail": 33,
+        #         "Shop": 29,
+        #         "Show Room": 30,
+        #         "Store": 25,
+        #         "Suite": 35,
+        #         "Townhouse": 9,
+        #         "Triplex": 28,
+        #         "Villa": 3,
+        #         "Warehouse": 26
+        #     }
+
+        #     # ✅ تبدیل مقدار `property_type` به `id` معادل آن
+        #     filters["apartmentTypes"] = [apartment_type_mapping.get(apartment_type, apartment_type)]
         if extracted_data.get("apartmentType") is not None:
             apartment_type = str(extracted_data["apartmentType"]).strip().title()  # تبدیل به فرمت استاندارد
-            # ✅ دیکشنری نگاشت نوع آپارتمان به `id`
-            apartment_type_mapping = {
-                "Apartment": 1,
-                "Building": 31,
-                "Duplex": 27,
-                "Full Floor": 4,
-                "Hotel": 32,
-                "Hotel Apartment": 8,
-                "Land / Plot": 6,
-                "Loft": 34,
-                "Office": 7,
-                "Penthouse": 10,
-                "Retail": 33,
-                "Shop": 29,
-                "Show Room": 30,
-                "Store": 25,
-                "Suite": 35,
-                "Townhouse": 9,
-                "Triplex": 28,
-                "Villa": 3,
-                "Warehouse": 26
-            }
 
-            # ✅ تبدیل مقدار `property_type` به `id` معادل آن
-            filters["apartmentTypes"] = [apartment_type_mapping.get(apartment_type, apartment_type)]
+            # ✅ تبدیل مقدار `apartment_type` به نام معادل آن
+            filters["apartmentTypes"] = [apartment_type]
 
 
         # ✅ اضافه کردن `delivery_date`
@@ -1417,7 +1673,6 @@ async def real_estate_chatbot(user_message: str) -> str:
                 print(f"❌ خطا در پردازش تاریخ: {e}")
                 filters["delivery_date"] = None  
 
-
         # ✅ اضافه کردن `payment_plan`
         if extracted_data.get("payment_plan") is not None:
             value = str(extracted_data["payment_plan"]).lower()  # تبدیل مقدار به رشته و کوچک کردن حروف
@@ -1425,6 +1680,7 @@ async def real_estate_chatbot(user_message: str) -> str:
                 filters["payment_plan"] = 1
             elif value == "no" or value == "0":  # اگر مقدار no یا 0 بود
                 filters["payment_plan"] = 0
+
 
 
         # ✅ اضافه کردن `post_delivery`
@@ -1449,6 +1705,10 @@ async def real_estate_chatbot(user_message: str) -> str:
         # ✅ اضافه کردن `facilities` (لیست امکانات)
         if extracted_data.get("facilities") is not None:
             facilities_list = extracted_data["facilities"]  # دریافت امکانات از `extracted_data`
+
+            # **بررسی و تبدیل `facilities` به لیست در صورت نیاز**
+            if isinstance(facilities_list, str):
+                facilities_list = [facilities_list]  # تبدیل رشته به لیست تک‌عضوی
             
             facilities_mapping = {
                 "24 hour security": "408",
@@ -1562,8 +1822,8 @@ async def real_estate_chatbot(user_message: str) -> str:
 
 
             
-        filters["property_status"] = 'Off Plan'
-        # filters["property_status"] = [2]
+        # filters["property_status"] = 'Off Plan'
+        filters["property_status"] = [2]
         filters["sales_status"] = [1]
         # filters["sales_status"] = 'Available'
         # filters["apartments"] = [12]
@@ -1572,7 +1832,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         memory_state = filters.copy()
 
 
-        properties = filter_properties(memory_state)
+        properties = await filter_properties(memory_state)
 
         memory_state["bedrooms"] = extracted_data.get("bedrooms")
 
@@ -1622,8 +1882,29 @@ async def serve_home():
     return FileResponse(os.path.join(os.getcwd(), "index.html"))
 
 
-# ✅ اجرای FastAPI
 if __name__ == "__main__":
+    import asyncio
+
+    async def main():
+        try:
+            print("🚀 در حال دریافت داده‌های املاک از API Estaty...")
+            await fetch_and_cache_properties()  # دریافت و کش کردن املاک در Redis
+            print("✅ املاک در Redis ذخیره شد.")
+
+            print("🚀 راه‌اندازی RabbitMQ برای دریافت داده‌های جدید...")
+            asyncio.create_task(start_rabbitmq_consumer())  # اجرای RabbitMQ به‌صورت Async Task
+            print("✅ RabbitMQ در حال اجرا است.")
+        except Exception as e:
+            print(f"❌ خطای غیرمنتظره در تسک‌های پس‌زمینه: {e}")
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # **اول تسک‌های پس‌زمینه اجرا شوند**
+    loop.run_until_complete(main())
+
+    # **بعد سرور FastAPI اجرا شود**
+    print("🚀 در حال اجرای سرور چت‌بات...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
-# "Authorization": f"Bearer {ESTATY_API_KEY}"
+
