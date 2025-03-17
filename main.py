@@ -153,6 +153,7 @@ def extract_filters(user_message: str, previous_filters: dict):
     - اگر کاربر گفت گارانتی اجاره داشته باشه مقدار 'guarantee_rental_guarantee' را 'Yes' بذار و اگر گفت نداشته باشه مقدارش را 'No' بذار.
     - 🚨 **نکته:** اگر کاربر فقط "اقساط" گفت و اشاره‌ای به برنامه پرداخت نکرد، مقدار `payment_plan` را به اشتباه 'yes' نکن!  
     - 🚨 **نکته:** اگر کاربر فقط "برنامه پرداخت" گفت و اشاره‌ای به پرداخت بعد از تحویل نکرد، مقدار `post_delivery` را به اشتباه 'yes' نکن!  
+    - **قیمت‌ها (`min_price`, `max_price`) باید همیشه به عنوان `عدد` (`int`) برگردانده شوند، نه `string`**.
 
 
 
@@ -1620,8 +1621,8 @@ async def real_estate_chatbot(user_message: str) -> str:
 
             print(f"🔍 بعد از فیلتر بر اساس سال تحویل ({target_year}): {len(properties)}")
 
-
-        memory_state["delivery_date"] = f"{target_year}-01"
+        if "delivery_date" in filters_date:
+            memory_state["delivery_date"] = f"{target_year}-01"
 
         memory_state["bedrooms"] = extracted_data.get("bedrooms")
 
