@@ -154,7 +154,11 @@ def extract_filters(user_message: str, previous_filters: dict):
     - 🚨 **نکته:** اگر کاربر فقط "اقساط" گفت و اشاره‌ای به برنامه پرداخت نکرد، مقدار `payment_plan` را به اشتباه 'yes' نکن!  
     - 🚨 **نکته:** اگر کاربر فقط "برنامه پرداخت" گفت و اشاره‌ای به پرداخت بعد از تحویل نکرد، مقدار `post_delivery` را به اشتباه 'yes' نکن!  
     - **قیمت‌ها (`min_price`, `max_price`) باید همیشه به عنوان `عدد` (`int`) برگردانده شوند، نه `string`**.
-
+    - اسم شرکت ها رو به انگلیسی ذخیره کن. اگر به فارسی نوشته شده با توجه به اطلاعاتت اسم شرکت رو ذخیره کن یا چیزی نزدیک به آن را
+    - امکانات گفته شده رو به انگلیسی ذخیره کن
+    - اگر کاربر گفت 'با حدود X میلیون خونه میخوام' یا 'با X میلیون خونه میخوام'، مقدار X را به عدد تبدیل کن و برای فیلدهای `min_price` و `max_price` به‌صورت زیر مقداردهی کن:
+        - مقدار `max_price` را 100000  بیشتر از مقدار گفته‌شده قرار بده.
+        - مقدار `min_price` را 100000  کمتر از مقدار گفته‌شده تنظیم کن.
 
 
     - **اگر اطلاعات ناقص است، لیست سؤالات موردنیاز برای تکمیل را بده.**
@@ -173,11 +177,12 @@ def extract_filters(user_message: str, previous_filters: dict):
     - "min_area" (اگر ذکر شده)
     - "max_area" (اگر ذکر شده)
     - "sales_status" ("مثلاً "موجود )
+    - "developer_company" (اگر شرکت سازنده ذکر شده)
     - "delivery_date" ( اگر ذکر شده به فرمت `YYYY-MM` خروجی بده)
     - "payment_plan" (اگر ذکر شده و میخواد 'Yes' بده اگر نخواست 'No' بده اگر چیزی نگفت 'null' بزار)
     - "post_delivery" (اگر ذکر شده و میخواد 'Yes' بده اگر نخواست 'No' بده اگر چیزی نگفت 'null' بزار)
     - "guarantee_rental_guarantee" (اگر ذکر شده و میخواد 'Yes' بده اگر نخواست 'No' بده اگر چیزی نگفت 'null' بزار)
-    - "facilities" (امکانات املاک مثل "Cinema"، "Clinic")
+    - "facilities_name" (امکانات املاک مثل "Cinema"، "Clinic")
 
 
     **اگر هر یک از این فیلدها در درخواست کاربر ذکر نشده بود، مقدار آن را null قرار بده.**
@@ -215,7 +220,7 @@ def extract_filters(user_message: str, previous_filters: dict):
 
         # بررسی اگر `bedrooms`, `max_price`, `district` مقدار داشته باشند، `search_ready` را `true` کن
 
-        essential_keys = ["bedrooms", "max_price", "district"]
+        essential_keys = ["bedrooms", "max_price", "district", "developer_company", "post_delivery", "facilities_name", "guarantee_rental_guarantee", "payment_plan"]
 
         for key in essential_keys:
             if extracted_data.get(key) is None and memory_state.get(key) is not None:
@@ -1471,11 +1476,80 @@ async def real_estate_chatbot(user_message: str) -> str:
             elif value == "no" or value == "0":  # اگر مقدار no یا 0 بود
                 filters["guarantee_rental_guarantee"] = 0
 
+        # ✅ اضافه کردن `developer_company_id`
+        if extracted_data.get("developer_company") is not None:
+            developer_list = extracted_data["developer_company"]  # دریافت نام شرکت توسعه‌دهنده
+
+            # **بررسی و تبدیل `developer_company` به لیست در صورت نیاز**
+            if isinstance(developer_list, str):
+                developer_list = [developer_list]  # تبدیل رشته به لیست تک‌عضوی
+
+            developer_mapping = {
+                'Burtville Developments': 330, 'Ellington Properties': 50, 'Sobha': 3, 'Tiger Properties': 103,
+                'Azizi': 37, 'GJ Properties': 326, 'Green Group': 346, 'Meraas': 70, 'Dubai Properties': 258,
+                'Confident Group': 308, 'Iman Developers': 61, 'EMAAR': 2, 'Damac': 318, 'Shapoorji Pallonji': 91,
+                'Arada Properties': 35, 'Omniyat': 77, 'Oro24': 241, 'Prestige One': 80, 'Deyaar': 45, 'Select Group': 85,
+                'Nshama': 76, 'Marquis Point': 274, 'Arenco Real Estate': 398, 'Rijas Aces Property': 233, 'Eagle Hills': 299,
+                'Wasl': 109, 'London Gate': 264, 'Nakheel': 74, 'Reportage': 232, 'GFH': 60, 'Expo City': 54, 'AYS Developments': 36,
+                'Imtiaz': 87, 'Park Group': 366, 'Almazaya Holding': 68, 'Samana Developers': 83, 'Aldar': 32, 'Bloom Holding': 270,
+                'AG Properties': 317, 'Swank Development': 393, 'Binghatti': 38, 'Divine One Group': 311, 'Emirates properties': 267,
+                'Dubai South': 323, 'Pearlshire Developments': 329, 'Gulf Land': 239, 'Radiant': 269, 'Modon Properties': 394,
+                'Alzorah Development': 383, 'Algouta Properties': 380, 'Majid Al Futtaim Group': 111, 'HMB': 247, 'Naseeb Group': 265,
+                'Amwaj Development': 348, 'Condor Group': 41, 'Grid properties': 296, 'Enso Development': 403, 'Aqua Properties': 34,
+                'SRG Holding': 95, 'Dugasta': 276, 'Roya Lifestyle Developments': 338, 'Meteora': 278, 'Aqasa Developers': 333,
+                'Zimaya Properties': 392, 'Citi Developers': 283, 'Amali Properties': 341, 'Dubai Invesment': 254, 'Credo': 324,
+                'AAF Development': 409, 'Saas Properties': 300, 'Object 1': 237, 'Meraki Developers': 71, 'Dalands Developer': 427,
+                'Taraf': 100, 'The Heart of Europe': 101, 'HRE Development': 399, 'Lootah': 65, 'AJ Gargash Real Estate': 465,
+                'Sol Properties': 94, 'Townx Real Estate': 105, 'Ajmal Makan': 260, 'Symbolic': 97, 'Mashriq Elite': 332,
+                'Nabni developments': 294, 'Danube Properties': 42, 'IFA Hotels & Resorts': 486, 'Q Properties': 408,
+                'ARAS Real Estate': 293, 'East & West Properties': 49, 'Amaya Properties LLC': 413, 'H&H': 315, 'Laya': 238,
+                'Leos': 240, 'Pure Gold': 256, 'Empire Development': 52, 'KASCO Development': 433, 'Swiss Properties': 96,
+                'Beyond': 443, 'Rabdan': 289, 'Esnad Management': 421, 'Durar': 320, 'Signature D T': 203, 'ABA Group': 336,
+                'Luxe Developer': 327, 'Vincitore': 108, 'Uniestate Properties': 107, 'Avelon Developments': 287, 'Rokane': 417,
+                'Orange': 303, 'Iraz Developments': 335, 'Aqaar': 305, 'Keymavens development': 345, 'Peak Summit Real Estate Development': 350,
+                'Baraka Development': 304, 'LMD Real Estate': 227, 'Arista Properties': 321, 'Ginco Properties': 374,
+                'Lacasa Living': 477, 'Wow Resorts': 405, 'Aark Developers': 26, 'Pantheon Development': 78, 'DV8 Developers': 423,
+                "Mada'in": 154, 'Mubadala': 468, 'Lucky Aeon': 66, 'Meydan': 422, 'Anax Developments': 301, 'Shoumous': 261,
+                'Five Holdings': 56, 'Acube Developments': 309, 'World Of Wonders': 291, 'Palladium Development': 356,
+                'Skyline Builders': 285, "Khamas Group Of Investment Co's": 363, 'Baccarat': 370, 'Metac Properties L.L.C': 23,
+                'Riviera Group': 298, 'MAG': 242, 'Kingdom Properties': 456, 'MeDoRe': 255, 'Revolution': 342, 'BNH Real Estate Developer': 429,
+                'Esnaad': 302, 'Takmeel Real Estate': 314, 'Mered': 288, 'Emerald Palace Group': 51, 'RAK Properties': 245,
+                'Fortune 5': 58, 'Siadah International Real Estate': 406, 'Peace Homes Development': 250, 'BnW Developments': 382,
+                'Tuscany Real Estate Development': 396, 'One Development': 425, 'AHS Properties': 319, 'ARIB Developments': 389,
+                'Alseeb Real Estate Development': 442, 'Tarrad Real Estate': 451, 'Stamn Development': 440, 'Vantage Properties': 469,
+                'Range Developments': 479, 'Zane Development': 481, 'Alta Real Estate Development': 491, 'Qube Development': 354,
+                'Green Yard Properties': 412, 'MGS Development': 353, 'Mira Developments': 282, 'True Future Development': 495,
+                'Sama Ezdan': 205, 'AiZN Development': 404, 'Wellington Developments': 497, 'Ohana Developments': 369,
+                'Heilbronn Properties': 339, 'Seven Tides': 89, 'Kamdar developments': 470, 'IGO': 259, 'Ahmadyar Developments': 375,
+                'Karma': 62, 'Imkan': 371, 'LAPIS Properties': 419, 'S&S Real Estate': 499, 'Fakhruddin Properties': 55,
+                'Saba Property Developers': 416, 'Majid Developments': 401, 'JRP Development': 410, 'DarGlobal': 44,
+                'HVM Living': 484, 'Segrex': 284, 'Mr. Eight Development': 430, 'Golden Wood': 407, 'EL Prime Properties': 431,
+                'Wellcube.life': 395, 'Mubarak Al Beshara Real Estate Development': 420, 'Source of Fate': 434, 'Dar Alkarama': 43,
+                'Palma Holding': 340, 'Shurooq Development': 435, 'Vakson Real Estate': 358, 'Tasmeer Indigo Properties': 352,
+                'AB Developers': 367, 'Alzarooni Development': 444, 'Amaal': 498, 'Wahat Al Zaweya': 397, 'Galaxy': 379,
+                'MS Homes': 376, 'MAK Developers': 415, 'City View Developments': 391, 'Reef Luxury Development': 424,
+                'Blanco Thornton Properties': 402, 'ADE Properties': 446, 'IRTH': 372, 'Forum Real Estate': 387,
+                'Nine Yards Development': 494, 'One Yard': 200, 'AAA Development': 441, 'Nine Development': 411,
+                'vision developments': 390, 'Alef Group': 273, 'Svarn': 368, 'Valores': 480, 'Crystal Bay Development': 377,
+            }
+
+            if isinstance(developer_list, list):  # بررسی اینکه ورودی یک لیست باشد
+                mapped_developers = []
+
+                for developer in developer_list:
+                    best_match, score = process.extractOne(developer.strip(), developer_mapping.keys())
+
+                    if score > 70:  # **فقط اگر دقت بالای ۷۰٪ بود، مقدار را قبول کن**
+                        mapped_developers.append(developer_mapping[best_match])
+
+                if mapped_developers:  # **اگر شرکت‌هایی پیدا شدند، به `filters` اضافه شود**
+                    filters["developer_company_id"] = mapped_developers
+
 
 
         # ✅ اضافه کردن `facilities` (لیست امکانات)
-        if extracted_data.get("facilities") is not None:
-            facilities_list = extracted_data["facilities"]  # دریافت امکانات از `extracted_data`
+        if extracted_data.get("facilities_name") is not None:
+            facilities_list = extracted_data["facilities_name"]  # دریافت امکانات از `extracted_data`
 
             # **بررسی و تبدیل `facilities` به لیست در صورت نیاز**
             if isinstance(facilities_list, str):
@@ -1624,7 +1698,14 @@ async def real_estate_chatbot(user_message: str) -> str:
         if "delivery_date" in filters_date:
             memory_state["delivery_date"] = f"{target_year}-01"
 
-        memory_state["bedrooms"] = extracted_data.get("bedrooms")
+        if "bedrooms" in extracted_data:
+            memory_state["bedrooms"] = extracted_data.get("bedrooms")
+
+        if "developer_company" in extracted_data:
+            memory_state["developer_company"] = extracted_data.get("developer_company")
+            
+        if "facilities_name" in extracted_data:
+            memory_state["facilities_name"] = extracted_data.get("facilities_name")
 
         print("🔹 memory:", memory_state)
 
