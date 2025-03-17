@@ -219,8 +219,8 @@ def extract_filters(user_message: str, previous_filters: dict):
         #         return "❓ برای جستجو، لطفاً این اطلاعات را مشخص کنید: " + "، ".join(missing_questions)
 
         # بررسی اگر `bedrooms`, `max_price`, `district` مقدار داشته باشند، `search_ready` را `true` کن
-
-        essential_keys = ["bedrooms", "max_price", "district", "developer_company", "post_delivery", "facilities_name", "guarantee_rental_guarantee", "payment_plan"]
+        # , "developer_company", "post_delivery", "facilities_name", "guarantee_rental_guarantee", "payment_plan"
+        essential_keys = ["bedrooms", "max_price"]
 
         for key in essential_keys:
             if extracted_data.get(key) is None and memory_state.get(key) is not None:
@@ -1706,6 +1706,7 @@ async def real_estate_chatbot(user_message: str) -> str:
             
         if "facilities_name" in extracted_data:
             memory_state["facilities_name"] = extracted_data.get("facilities_name")
+
 
         print("🔹 memory:", memory_state)
 
