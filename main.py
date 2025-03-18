@@ -1671,7 +1671,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         # filters["property_status"] = [2]
         filters["sales_status"] = [1]
         # filters["sales_status"] = 'Available'
-        # filters["apartments"] = [12]
+        
 
         print("🔹 فیلترهای اصلاح‌شده و ارسال‌شده به API:", filters)
         memory_state = filters.copy()
