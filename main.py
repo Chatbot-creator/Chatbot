@@ -1732,6 +1732,12 @@ app.add_middleware(SessionMiddleware, secret_key="your_secret_key", session_cook
 
 from fastapi.middleware.cors import CORSMiddleware
 
+# لیست دامنه‌هایی که مجاز هستند درخواست بفرستند
+origins = [
+    "https://www.trunest.ae",
+    "https://trunest.ae",
+]
+
 # مجاز کردن درخواست‌ها از همه دامنه‌ها (یا می‌توان دامنه خاصی را تعریف کرد)
 app.add_middleware(
     CORSMiddleware,
