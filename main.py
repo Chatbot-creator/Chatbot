@@ -1738,23 +1738,16 @@ origins = [
     "https://trunest.ae",
 ]
 
-# # مجاز کردن درخواست‌ها از همه دامنه‌ها (یا می‌توان دامنه خاصی را تعریف کرد)
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=origins,  # یا ["*"] برای همه دامنه‌ها
-#     allow_origin_regex="https://.*trunest\.ae",  # تمام ساب‌دامین‌های trunest.ae مجاز باشند
-#     allow_credentials=True,
-#     allow_methods=["*"],  # تمام متدهای HTTP مجاز باشند (GET, POST, PUT, DELETE, ...)
-#     allow_headers=["*"],  # تمام هدرها مجاز باشند
-# )
-
+# مجاز کردن درخواست‌ها از همه دامنه‌ها (یا می‌توان دامنه خاصی را تعریف کرد)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # برای تست، همه دامنه‌ها مجاز باشند
+    allow_origins=origins,  # یا ["*"] برای همه دامنه‌ها
+    allow_origin_regex="https://.*trunest\.ae",  # تمام ساب‌دامین‌های trunest.ae مجاز باشند
     allow_credentials=True,
-    allow_methods=["*"],  # تمام متدها مجاز باشند
+    allow_methods=["*"],  # تمام متدهای HTTP مجاز باشند (GET, POST, PUT, DELETE, ...)
     allow_headers=["*"],  # تمام هدرها مجاز باشند
 )
+
 
 # ✅ **ایجاد شناسه یکتا برای هر کاربر**
 def get_user_session(request: Request):
