@@ -85,7 +85,8 @@ app = FastAPI()
 
 origins = [
     "https://www.trunest.ae",  # اجازه دادن به localhost:63342
-    "http://127.0.0.1:8000",  # اجازه دادن به localhost:8000
+    "https://www.trunest.ae:8000",
+    "https://www.trunest.ae:3000",# اجازه دادن به localhost:8000
     "*",  # اگر بخواهید همه منابع را اجازه دهید
 ]
 
@@ -1637,7 +1638,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         # filters["property_status"] = [2]
         filters["sales_status"] = [1]
         # filters["sales_status"] = 'Available'
-        
+        # filters["apartments"] = [12]
 
         print("🔹 فیلترهای اصلاح‌شده و ارسال‌شده به API:", filters)
         memory_state = filters.copy()
@@ -1741,4 +1742,4 @@ async def serve_home():
 
 # ✅ اجرای FastAPI
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
