@@ -13,6 +13,9 @@ from datetime import datetime, timezone
 import re
 from openai import AsyncOpenAI
 import asyncio
+from fastapi import FastAPI, Request, Depends
+from starlette.middleware.sessions import SessionMiddleware
+import uuid
 
 cache = TTLCache(maxsize=100, ttl=600)
 
@@ -1723,13 +1726,34 @@ async def real_estate_chatbot(user_message: str) -> str:
     return "متوجه نشدم که به دنبال چه چیزی هستید. لطفاً واضح‌تر بگویید که دنبال ملک هستید یا اطلاعات بیشتری درباره ملکی می‌خواهید."
 
 
+# ✅ **اضافه کردن سشن به FastAPI**
+app.add_middleware(SessionMiddleware, secret_key="your_secret_key", session_cookie="session_id")
+
+# ✅ **ایجاد شناسه یکتا برای هر کاربر**
+def get_user_session(request: Request):
+    if "user_id" not in request.session:
+        request.session["user_id"] = str(uuid.uuid4())  # ایجاد یک UUID جدید برای کاربر
+    print(f"🔹 User ID: {request.session['user_id']}")  # نمایش user_id در لاگ
+    return request.session["user_id"]
 
 
 # ✅ مسیر API برای چت‌بات
 @app.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(request: Request, user_id: str = Depends(get_user_session)):
 
-    user_message = request.message.strip()
+    # ✅ مقداردهی اولیه سشن
+    session = request.session
+    print(f"🔹 Current Session: {session}")  # نمایش مقدار سشن
+
+    # ✅ بررسی تاریخچه چت در سشن
+    if "chat_history" not in session:
+        session["chat_history"] = []
+        print("✅ Chat history initialized")  # نمایش لاگ مقداردهی اولیه چت
+
+    # ✅ دریافت پیام کاربر
+    user_data = await request.json()
+    user_message = user_data.get("message", "").strip()
+    print(f"🔹 User Message: {user_message}")  # نمایش پیام کاربر
 
     # ✅ **۱. اگر چت‌بات برای اولین بار باز شود، پیام خوش‌آمدگویی ارسال کند**
     if not user_message:
@@ -1739,12 +1763,20 @@ async def chat(request: ChatRequest):
 
         **چطور می‌توانم کمکتان کنم؟**  
         """
-        return {"response": welcome_message}
+        return {"response": welcome_message, "user_id": user_id, "chat_history": session["chat_history"]}
 
+
+    # ✅ ذخیره پیام کاربر در سشن
+    session["chat_history"].append({"user": user_message})
+    print(f"✅ Chat history updated: {session['chat_history']}")
 
     """ دریافت پیام کاربر و ارسال پاسخ از طریق هوش مصنوعی """
-    bot_response = await real_estate_chatbot(request.message)
-    return {"response": bot_response}
+    bot_response = await real_estate_chatbot(user_message)
+
+    # ✅ ذخیره پیام‌های کاربر و چت‌بات در سشن
+    session["chat_history"].append({"user": user_message, "bot": bot_response})
+
+    return {"response": bot_response, "user_id": user_id, "chat_history": session["chat_history"]}
 
 
 from fastapi.responses import FileResponse
