@@ -86,8 +86,10 @@ app = FastAPI()
 origins = [
     "https://www.trunest.ae",  # اجازه دادن به localhost:63342
     "https://www.trunest.ae:8000",
-    "https://www.trunest.ae:3000",# اجازه دادن به localhost:8000
-    "*",  # اگر بخواهید همه منابع را اجازه دهید
+    "https://www.trunest.ae:3000",
+    "https://www.trunest.ae/chat",
+    "https://www.trunest.ae:8000/chat"# اجازه دادن به localhost:8000
+     # اگر بخواهید همه منابع را اجازه دهید
 ]
 
 app.add_middleware(
