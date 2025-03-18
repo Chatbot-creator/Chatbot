@@ -1728,7 +1728,9 @@ async def real_estate_chatbot(user_message: str) -> str:
 
 # ✅ **اضافه کردن سشن به FastAPI**
 # app.add_middleware(SessionMiddleware, secret_key="your_secret_key", session_cookie="session_id", same_site="none")
-app.add_middleware(SessionMiddleware, secret_key="your_secret_key")
+# app.add_middleware(SessionMiddleware, secret_key="your_secret_key")
+app.add_middleware(SessionMiddleware, secret_key="onsovinewoin23r439jjn340r04t3", session_cookie="session_id")
+
 
 
 from fastapi.middleware.cors import CORSMiddleware
