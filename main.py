@@ -1729,6 +1729,18 @@ async def real_estate_chatbot(user_message: str) -> str:
 # ✅ **اضافه کردن سشن به FastAPI**
 app.add_middleware(SessionMiddleware, secret_key="your_secret_key", session_cookie="session_id")
 
+
+from fastapi.middleware.cors import CORSMiddleware
+
+# مجاز کردن درخواست‌ها از همه دامنه‌ها (یا می‌توان دامنه خاصی را تعریف کرد)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://www.trunest.ae"],  # یا ["*"] برای همه دامنه‌ها
+    allow_credentials=True,
+    allow_methods=["*"],  # تمام متدهای HTTP مجاز باشند (GET, POST, PUT, DELETE, ...)
+    allow_headers=["*"],  # تمام هدرها مجاز باشند
+)
+
 # ✅ **ایجاد شناسه یکتا برای هر کاربر**
 def get_user_session(request: Request):
     if "user_id" not in request.session:
