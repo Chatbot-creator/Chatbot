@@ -1742,6 +1742,7 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,  # یا ["*"] برای همه دامنه‌ها
+    allow_origin_regex="https://.*trunest\.ae",  # تمام ساب‌دامین‌های trunest.ae مجاز باشند
     allow_credentials=True,
     allow_methods=["*"],  # تمام متدهای HTTP مجاز باشند (GET, POST, PUT, DELETE, ...)
     allow_headers=["*"],  # تمام هدرها مجاز باشند
