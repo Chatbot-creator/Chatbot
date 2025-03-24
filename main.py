@@ -1386,7 +1386,7 @@ async def real_estate_chatbot(user_message: str) -> str:
 
             city_mapping = {
             "Dubai": 6,
-            "Abu Dhabi": 9,
+            "Abu Dhabi": 9
         }
 
             filters["city_id"] = [city_mapping.get(city_id, city_id)]
