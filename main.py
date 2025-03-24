@@ -271,7 +271,7 @@ def extract_filters(user_message: str, previous_filters: dict):
     - "new_search": true | false
     - "search_ready": true | false
     - "questions_needed": ["بودجه شما چقدر است؟", "چند اتاق خواب مدنظرتان است؟"]
-    - "city" (مثلاً "Dubai")
+    - "city" (اگر اشاره شده به انگلیسی خروجی بده)
     - "district" (منطقه اگر ذکر شده، مانند "JVC")
     - "property_type" ("مثلاً "Residential"، "Commercial")
     - "apartmentType" ("مثلاً "apartment"، "villa"، "penthouse")
@@ -324,8 +324,8 @@ def extract_filters(user_message: str, previous_filters: dict):
 
         # بررسی اگر `bedrooms`, `max_price`, `district` مقدار داشته باشند، `search_ready` را `true` کن
         # , "developer_company", "post_delivery", "facilities_name", "guarantee_rental_guarantee", "payment_plan"
-        essential_keys = ["bedrooms", "max_price"]
-        # essential_keys = ["bedrooms", "max_price", "min_price"]
+        # essential_keys = ["bedrooms", "max_price"]
+        essential_keys = ["bedrooms", "max_price", "min_price"]
 
         for key in essential_keys:
             if extracted_data.get(key) is None and memory_state.get(key) is not None:
@@ -1378,7 +1378,18 @@ async def real_estate_chatbot(user_message: str) -> str:
         filters_date = {}
 
         if extracted_data.get("city"):
-            filters["city"] = extracted_data.get("city")
+            memory_state["city"] = extracted_data.get("city")
+
+
+        if extracted_data.get("city") is not None:
+            city_id = extracted_data["city"]  # مقدار را به رشته تبدیل کن
+
+            city_mapping = {
+            "Dubai": 6,
+            "Abu Dhabi": 9,
+        }
+
+            filters["city_id"] = [city_mapping.get(city_id, city_id)]
 
         if extracted_data.get("district"):
             district_i = str(extracted_data["district"]).strip().title()  # مقدار را به رشته تبدیل کن
@@ -1775,6 +1786,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         filters["property_status"] = 'Off Plan'
         # filters["property_status"] = [2]
         filters["sales_status"] = [1]
+        
         # filters["sales_status"] = 'Available'
         # filters["apartments"] = [12]
 
