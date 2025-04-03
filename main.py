@@ -36,6 +36,7 @@ HEADERS = {
 
 import random
 memory_state = {}
+memory_district = {}
 last_property_id = None
 last_properties_list = []
 last_selected_property = None  # ✅ ذخیره آخرین ملکی که کاربر در مورد آن اطلاعات بیشتری خواسته
@@ -254,11 +255,18 @@ def extract_filters(user_message: str, previous_filters: dict):
     - **قیمت‌ها (`min_price`, `max_price`) باید همیشه به عنوان `عدد` (`int`) برگردانده شوند، نه `string`**.
     - اسم شرکت ها رو به انگلیسی ذخیره کن. اگر به فارسی نوشته شده با توجه به اطلاعاتت اسم شرکت رو ذخیره کن یا چیزی نزدیک به آن را
     - امکانات گفته شده رو به انگلیسی ذخیره کن
+    - اگر کاربر نوشته باشد "ی خابه"، منظور او "یک خوابه" است. این یک غلط املایی رایج است. مقدار `bedrooms` را `1` قرار بده.
+    - "استودیو می‌خوام" یا "واحد استودیو" → مقدار bedrooms را "studio" قرار بده.
+
+    - اگر کاربر فقط عبارت "مسکونی" یا "تجاری" را گفته باشد (حتی بدون ذکر جزئیات دیگر)، مقدار `property_type` را بر اساس آن تنظیم کن:
+        - اگر گفت "مسکونی" یا عباراتی مثل "ملک مسکونی"، مقدار `property_type` را `"Residential"` قرار بده.
+        - اگر گفت "تجاری" یا عباراتی مثل "ملک تجاری"، مقدار `property_type` را `"Commercial"` قرار بده.
+
     - وقتی پیام کاربر فقط یک عدد تک رقمی باشد این مقدار رو در 'bedrooms' قرار بده .
     - اگر کاربر گفت **"قیمت برام مهم نیست"**، در مورد بودجه کاربر سوال نپرس.
     - اگر کاربر گفت که **"قیمت مهم نیست"** یا **"فرقی نداره"**، مقدار `max_price` و `min_price` را `null` بگذار و دیگر درباره قیمت سوال نپرس.
     - اگر نام شهر توسط کاربر گفته نشده مقدار 'city' را null .بزار و فقط وقتی نام شهر گفته شد خروجی شده شهر های گفت شده یا دوبی است یا ابوظبی
-    - اگر کاربر گفت 'با حدود X میلیون خونه میخوام' یا 'با X میلیون خونه میخوام'، مقدار X را به عدد تبدیل کن و برای فیلدهای `min_price` و `max_price` به‌صورت زیر مقداردهی کن:
+    - اگر کاربر گفت 'با حدود X میلیون خونه میخوام' یا 'با X میلیون خونه میخوام' یا 'واحد x میلیونی میخوام'، مقدار X را به عدد تبدیل کن و برای فیلدهای `min_price` و `max_price` به‌صورت زیر مقداردهی کن:
         - مقدار `max_price` را ده درصد  بیشتر از مقدار گفته‌شده قرار بده.
         - مقدار `min_price` را ده درصد  کمتر از مقدار گفته‌شده تنظیم کن.
     
@@ -273,7 +281,14 @@ def extract_filters(user_message: str, previous_filters: dict):
     - **در صورت یافتن نزدیک‌ترین نام، آن را در فیلتر به صورت صحیح وارد کن.**
     - اگر اطلاعات ناقص است، لیست سؤالات موردنیاز برای تکمیل را بده.
 
+    - اگر تو اطلاعات قبلی کاربر 'previous_type' برابر با 'district_search' است اصلا سوال خروجی نده و نپرس چون
 
+    - اگر کاربر فقط عبارت "مسکونی" یا "تجاری" را گفته باشد (حتی بدون ذکر جزئیات دیگر)، مقدار `property_type` را بر اساس آن تنظیم کن:
+        - اگر گفت "مسکونی" یا عباراتی مثل "ملک مسکونی"، مقدار `property_type` را `"Residential"` قرار بده.
+        - اگر گفت "تجاری" یا عباراتی مثل "ملک تجاری"، مقدار `property_type` را `"Commercial"` قرار بده.
+
+    - اگر کاربر مستقیماً عبارت "مسکونی" یا "تجاری" را در پیامش نوشته بود، فقط در این صورت مقدار `property_type` را به ترتیب "Residential" یا "Commercial" تنظیم کن.  
+    - در غیر این صورت مقدار `property_type` را `null` بگذار حتی اگر جمله به طور ضمنی به آن اشاره دارد.
 
     - **اگر اطلاعات ناقص است، لیست سؤالات موردنیاز برای تکمیل را بده.**
 
@@ -410,7 +425,7 @@ async def generate_ai_summary(properties, start_index=0):
     number_property = 3
 
     if not properties:
-        return "متأسفانه هیچ ملکی با این مشخصات پیدا نشد. لطفاً بازه قیمتی را تغییر دهید یا منطقه دیگری انتخاب کنید."
+        return "متأسفانه هیچ ملکی با این مشخصات پیدا نشد. لطفاً بازه قیمتی یا تعداد اتاق خواب را تغییر دهید یا منطقه دیگری انتخاب کنید."
 
     last_properties_list = properties
     comp_properties = properties
@@ -517,6 +532,15 @@ async def generate_ai_summary(properties, start_index=0):
     <div style="text-align: right; direction: rtl; padding: 10px; width: 100%;">
         <p style="margin: 0;">برای مشاهده اطلاعات بیشتر درباره هر ملک، لطفاً عبارت <b>'پروژه [نام پروژه] را بیشتر توضیح بده'</b> را بنویسید.</p>
         <p style="margin-top: 5px;">اگر به املاک بیشتری نیاز دارید، بگویید: <b>'املاک بیشتری نشان بده'</b>.</p>
+    </div>
+    """
+
+    formatted_output += """
+    <div style="text-align: right; direction: rtl; padding: 10px; width: 100%;">
+        <p style="margin-bottom: 8px;">همچنین میتوانید برای دریافت اطلاعات بیشتر یا خرید هر یک از این املاک، با کارشناسان ما در شرکت ترونست تماس بگیرید:</p>
+        <p style="margin: 0;"><b>📞 شماره تلفن:</b> 0097143639825</p>
+        <p style="margin: 0;"><b>📱 شماره همراه:</b> 00971569939796</p>
+        <p style="margin: 0;"><b>💬 واتساپ:</b> <a href="https://wa.me/00971569939796">تماس با واتساپ</a></p>
     </div>
     """
 
@@ -690,8 +714,11 @@ async def fetch_real_estate_buying_guide(user_question):
 
 
         **🔹 لطفاً یک پاسخ دقیق، کوتاه و مفید در ۳ الی ۴ جمله به زبان فارسی  با توجه به اطلاعات خودت که میتونی به پیام کاربر جواب بدی و همچنین اطلاعاتی که از اینترنت گرفته شده بده و ارائه بده.**
+        -  تو مشاور املاک شرکت ترونست هستی که شرکت معتبری توی املاک امارات هست و برای اینکه به کاربر شرکتی رو خواستی معرفی کنی فقط شرکت ترونست رو معرفی کن
+        - اگر کاربر درمورد مناطق پرسید با توجه به دانشت به سوالش پاسخ بده و مناطقی که به خواستش نزدیکه براش معرفی کن
         - لحن پاسخ باید حرفه‌ای و کمک‌کننده باشد.
-        - اگر اطلاعات کافی نیست، جمله‌ای مانند "لطفاً به وب‌سایت‌های رسمی مراجعه کنید" اضافه کن.
+        - اگر اطلاعات کافی نیست، جمله‌ای مانند "لطفاً به کارشناسان شرکت ترونست مراجعه کنید" اضافه کن. 
+
         """
         ai_response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -699,7 +726,16 @@ async def fetch_real_estate_buying_guide(user_question):
             max_tokens=150
         )
 
-        return ai_response.choices[0].message.content.strip()
+        # ✅ اضافه کردن اطلاعات تماس به انتهای پاسخ
+        contact_info = """
+        <div style="text-align: right; direction: rtl; padding: 10px; width: 100%;">
+            <p style="margin: 0;"><b>📞 شماره تلفن:</b> 0097143639825</p>
+            <p style="margin: 0;"><b>📱 شماره همراه:</b> 00971569939796</p>
+            <p style="margin: 0;"><b>💬 واتساپ:</b> <a href="https://wa.me/00971569939796">تماس با واتساپ</a></p>
+        </div>
+        """
+
+        return ai_response.choices[0].message.content.strip() + contact_info
 
     except Exception as e:
         print(f"❌ خطا در جستجو: {str(e)}")  # لاگ خطا
@@ -984,6 +1020,13 @@ async def process_purchase_request(user_message: str) -> str:
     - **مراحل رسمی خرید این ملک در دبی**  
     - 🔗 لینک مشاهده اطلاعات کامل ملک در سایت رسمی **[سایت Trunest](https://www.trunest.ae/property/{property_id})**
 
+    - 💡 برای دریافت اطلاعات بیشتر و راهنمایی‌های دقیق، حتماً با **کارشناسان شرکت ترونست** تماس بگیرید.  
+    - 📞 **شماره تلفن:** 0097143639825  
+    - 📱 **شماره همراه:** 00971569939796  
+    - 🌐 **وب‌سایت:** <a href="https://trunest.ae">trunest.ae</a>  
+    - 📱 **اینستاگرام:** <a href="https://instagram.com/trunest.ae">@trunest.ae</a>  
+    - 💬 **واتساپ:** <a href="https://wa.me/00971569939796">تماس با واتساپ</a>   
+
     **قوانین پاسخ:**
     - حتماً لینک‌ها را به صورت **هایپرلینک HTML** بنویس. مثال: <a href="https://www.trunest.ae/property/{selected_properties[0]['id']}">🔗 سایت Trunest</a>
     - تایتل‌ها را داخل `<h3>` قرار بده تا بزرگتر نمایش داده شوند.
@@ -1001,12 +1044,16 @@ async def process_purchase_request(user_message: str) -> str:
 
 
 
-def find_districts_by_budget(max_price, bedrooms=None, apartment_typ=None, min_price=None):
+# def find_districts_by_budget(max_price, bedrooms=None, apartment_typ=None, min_price=None):
+def find_districts_by_budget(max_price=None, min_price=None, bedrooms=None, apartment_typ=None, facilities=None, developer_company=None, delivery_date=None, post_delivery=None, payment_plan=None, guarantee_rental=None):
+
     """جستجوی مناطق مناسب با توجه به بودجه و تعداد اتاق‌خواب"""
-    
-    filters = {
-        "max_price": max_price
-    }
+    filters = {}
+
+
+    if max_price is not None:
+        filters["max_price"] = max_price
+
     if min_price is not None:
         filters["min_price"] = min_price
 
@@ -1075,6 +1122,204 @@ def find_districts_by_budget(max_price, bedrooms=None, apartment_typ=None, min_p
         # مقدار `property_type` را به `id` تغییر بده
         filters["apartments"] = [bedrooms_mapping.get(bedrooms_count, bedrooms_count)]
 
+    if facilities is not None:
+        facilities_list = facilities  # دریافت امکانات از `extracted_data`
+
+        # **بررسی و تبدیل `facilities` به لیست در صورت نیاز**
+        if isinstance(facilities_list, str):
+            # facilities_list = [facilities_list]  # تبدیل رشته به لیست تک‌عضوی
+            facilities_list = [x.strip() for x in facilities_list.split(",") if x.strip()]
+        
+        facilities_mapping = {
+                "24 hour security": "408",
+                "24/7 Security and Maintenance Services": "399",
+                "Access Control System": "314",
+                "Air Fitness zones": "570",
+                "Art Garden": "510",
+                "BBQ Area": "21",
+                "Baby Care Centre": "163",
+                "Badminton Court": "100",
+                "Balcony": "76",
+                "Basketball Court": "427",
+                "Basketball Playground": "10",
+                "Beach": "387",
+                "Beach Club": "595",
+                "Beauty Saloon": "106",
+                "Bicycle parking": "348",
+                "Bike Paths": "52",
+                "Bike tracks": "458",
+                "Bocce Play Area": "525",
+                "Broadband Internet": "46",
+                "Building Management System": "325",
+                "Business Centre": "175",
+                "CCTV Surveillance": "313",
+                "Cabana Seating": "88",
+                "Cafe": "184",
+                "Central A/C & Heating": "47",
+                "Changing Room and Locker": "533",
+                "Chess Board": "97",
+                "Children's Play Area": "6",
+                "Children's Swimming Pool": "7",
+                "Cinema": "19",
+                "Clinic": "279",
+                "Close Circuit TV System": "323",
+                "Club House": "226",
+                "Co-Working Spaces": "221",
+                "Community hubs": "460",
+                "Concierge Service": "37",
+                "Covered Parking": "31",
+                "Cricket Pitch": "95",
+                "Cycling Track": "276",
+                "Direct Beach Access": "96",
+                "Dog Park": "363",
+                "Electric Vehicle Charging Stations": "229",
+                "Fitness Area": "424",
+                "Fitness Club": "50",
+                "Fitness studio": "397",
+                "Football Playground": "9",
+                "Games Lounge Room": "269",
+                "Garden": "11",
+                "Gym": "334",
+                "Gymnasium": "454",
+                "Health Club": "102",
+                "Hospital": "368",
+                "Jogging Track": "105",
+                "Kids Pool": "381",
+                "Kids Swimming Pool": "452",
+                "Laundry Room": "107",
+                "Library": "87",
+                "Mall": "111",
+                "Meeting Rooms": "369",
+                "Mini Golf": "96",
+                "Mosque": "204",
+                "Music Room": "268",
+                "Nursery": "217",
+                "Outdoor Gym": "26",
+                "Padel Tennis": "467",
+                "Park": "54",
+                "Parking": "405",
+                "Pet Shop": "281",
+                "Pharmacy": "57",
+                "Play Area": "425",
+                "Playground": "319",
+                "Pool Deck": "415",
+                "Private Cinema For Each Unit": "364",
+                "Private Parking for Each unit": "484",
+                "Security": "40",
+                "SPA": "43",
+                "Sauna": "13",
+                "Sauna & Steam Room": "144",
+                "School": "49",
+                "Shared Outdoor Swimming Pool": "20",
+                "Skate Park": "428",
+                "Smart Homes": "378",
+                "Squash Courts": "209",
+                "Supermarket": "56",
+                "Swimming Pool": "74",
+                "Tennis Playground": "8",
+                "Theater": "19",
+                "VR Game Room": "382",
+                "Water Fountain": "356",
+                "Veterinary Clinic": "280",
+                "Yoga": "167",
+                "Zen Garden": "511",
+                "Kids Club": "331",
+                "Safe & Secure": "529"
+        }
+
+        if isinstance(facilities_list, list):  # بررسی اینکه ورودی یک لیست باشد
+            mapped_facilities = []
+
+            for facility in facilities_list:
+                best_match, score = process.extractOne(facility.strip(), facilities_mapping.keys())
+
+                if score > 70:  # **فقط اگر دقت بالای ۷۰٪ بود، مقدار را قبول کن**
+                    mapped_facilities.append(facilities_mapping[best_match])
+
+            if mapped_facilities:  # **اگر امکاناتی پیدا شد، به `filters` اضافه شود**
+                filters["facilities"] = mapped_facilities
+
+
+    if developer_company is not None:
+        developer_list = developer_company  # دریافت نام شرکت توسعه‌دهنده
+
+        # **بررسی و تبدیل `developer_company` به لیست در صورت نیاز**
+        if isinstance(developer_list, str):
+            developer_list = [developer_list]  # تبدیل رشته به لیست تک‌عضوی
+
+        developer_mapping = {
+                'Burtville Developments': 330, 'Ellington Properties': 50, 'Sobha': 3, 'Tiger Properties': 103,
+                'Azizi': 37, 'GJ Properties': 326, 'Green Group': 346, 'Meraas': 70, 'Dubai Properties': 258,
+                'Confident Group': 308, 'Iman Developers': 61, 'EMAAR': 2, 'Damac': 318, 'Shapoorji Pallonji': 91,
+                'Arada Properties': 35, 'Omniyat': 77, 'Oro24': 241, 'Prestige One': 80, 'Deyaar': 45, 'Select Group': 85,
+                'Nshama': 76, 'Marquis Point': 274, 'Arenco Real Estate': 398, 'Rijas Aces Property': 233, 'Eagle Hills': 299,
+                'Wasl': 109, 'London Gate': 264, 'Nakheel': 74, 'Reportage': 232, 'GFH': 60, 'Expo City': 54, 'AYS Developments': 36,
+                'Imtiaz': 87, 'Park Group': 366, 'Almazaya Holding': 68, 'Samana Developers': 83, 'Aldar': 32, 'Bloom Holding': 270,
+                'AG Properties': 317, 'Swank Development': 393, 'Binghatti': 38, 'Divine One Group': 311, 'Emirates properties': 267,
+                'Dubai South': 323, 'Pearlshire Developments': 329, 'Gulf Land': 239, 'Radiant': 269, 'Modon Properties': 394,
+                'Alzorah Development': 383, 'Algouta Properties': 380, 'Majid Al Futtaim Group': 111, 'HMB': 247, 'Naseeb Group': 265,
+                'Amwaj Development': 348, 'Condor Group': 41, 'Grid properties': 296, 'Enso Development': 403, 'Aqua Properties': 34,
+                'SRG Holding': 95, 'Dugasta': 276, 'Roya Lifestyle Developments': 338, 'Meteora': 278, 'Aqasa Developers': 333,
+                'Zimaya Properties': 392, 'Citi Developers': 283, 'Amali Properties': 341, 'Dubai Invesment': 254, 'Credo': 324,
+                'AAF Development': 409, 'Saas Properties': 300, 'Object 1': 237, 'Meraki Developers': 71, 'Dalands Developer': 427,
+                'Taraf': 100, 'The Heart of Europe': 101, 'HRE Development': 399, 'Lootah': 65, 'AJ Gargash Real Estate': 465,
+                'Sol Properties': 94, 'Townx Real Estate': 105, 'Ajmal Makan': 260, 'Symbolic': 97, 'Mashriq Elite': 332,
+                'Nabni developments': 294, 'Danube Properties': 42, 'IFA Hotels & Resorts': 486, 'Q Properties': 408,
+                'ARAS Real Estate': 293, 'East & West Properties': 49, 'Amaya Properties LLC': 413, 'H&H': 315, 'Laya': 238,
+                'Leos': 240, 'Pure Gold': 256, 'Empire Development': 52, 'KASCO Development': 433, 'Swiss Properties': 96,
+                'Beyond': 443, 'Rabdan': 289, 'Esnad Management': 421, 'Durar': 320, 'Signature D T': 203, 'ABA Group': 336,
+                'Luxe Developer': 327, 'Vincitore': 108, 'Uniestate Properties': 107, 'Avelon Developments': 287, 'Rokane': 417,
+                'Orange': 303, 'Iraz Developments': 335, 'Aqaar': 305, 'Keymavens development': 345, 'Peak Summit Real Estate Development': 350,
+                'Baraka Development': 304, 'LMD Real Estate': 227, 'Arista Properties': 321, 'Ginco Properties': 374,
+                'Lacasa Living': 477, 'Wow Resorts': 405, 'Aark Developers': 26, 'Pantheon Development': 78, 'DV8 Developers': 423,
+                "Mada'in": 154, 'Mubadala': 468, 'Lucky Aeon': 66, 'Meydan': 422, 'Anax Developments': 301, 'Shoumous': 261,
+                'Five Holdings': 56, 'Acube Developments': 309, 'World Of Wonders': 291, 'Palladium Development': 356,
+                'Skyline Builders': 285, "Khamas Group Of Investment Co's": 363, 'Baccarat': 370, 'Metac Properties L.L.C': 23,
+                'Riviera Group': 298, 'MAG': 242, 'Kingdom Properties': 456, 'MeDoRe': 255, 'Revolution': 342, 'BNH Real Estate Developer': 429,
+                'Esnaad': 302, 'Takmeel Real Estate': 314, 'Mered': 288, 'Emerald Palace Group': 51, 'RAK Properties': 245,
+                'Fortune 5': 58, 'Siadah International Real Estate': 406, 'Peace Homes Development': 250, 'BnW Developments': 382,
+                'Tuscany Real Estate Development': 396, 'One Development': 425, 'AHS Properties': 319, 'ARIB Developments': 389,
+                'Alseeb Real Estate Development': 442, 'Tarrad Real Estate': 451, 'Stamn Development': 440, 'Vantage Properties': 469,
+                'Range Developments': 479, 'Zane Development': 481, 'Alta Real Estate Development': 491, 'Qube Development': 354,
+                'Green Yard Properties': 412, 'MGS Development': 353, 'Mira Developments': 282, 'True Future Development': 495,
+                'Sama Ezdan': 205, 'AiZN Development': 404, 'Wellington Developments': 497, 'Ohana Developments': 369,
+                'Heilbronn Properties': 339, 'Seven Tides': 89, 'Kamdar developments': 470, 'IGO': 259, 'Ahmadyar Developments': 375,
+                'Karma': 62, 'Imkan': 371, 'LAPIS Properties': 419, 'S&S Real Estate': 499, 'Fakhruddin Properties': 55,
+                'Saba Property Developers': 416, 'Majid Developments': 401, 'JRP Development': 410, 'DarGlobal': 44,
+                'HVM Living': 484, 'Segrex': 284, 'Mr. Eight Development': 430, 'Golden Wood': 407, 'EL Prime Properties': 431,
+                'Wellcube.life': 395, 'Mubarak Al Beshara Real Estate Development': 420, 'Source of Fate': 434, 'Dar Alkarama': 43,
+                'Palma Holding': 340, 'Shurooq Development': 435, 'Vakson Real Estate': 358, 'Tasmeer Indigo Properties': 352,
+                'AB Developers': 367, 'Alzarooni Development': 444, 'Amaal': 498, 'Wahat Al Zaweya': 397, 'Galaxy': 379,
+                'MS Homes': 376, 'MAK Developers': 415, 'City View Developments': 391, 'Reef Luxury Development': 424,
+                'Blanco Thornton Properties': 402, 'ADE Properties': 446, 'IRTH': 372, 'Forum Real Estate': 387,
+                'Nine Yards Development': 494, 'One Yard': 200, 'AAA Development': 441, 'Nine Development': 411,
+                'vision developments': 390, 'Alef Group': 273, 'Svarn': 368, 'Valores': 480, 'Crystal Bay Development': 377,
+        }
+
+        if isinstance(developer_list, list):  # بررسی اینکه ورودی یک لیست باشد
+            mapped_developers = []
+
+            for developer in developer_list:
+                best_match, score = process.extractOne(developer.strip(), developer_mapping.keys())
+
+                if score > 70:  # **فقط اگر دقت بالای ۷۰٪ بود، مقدار را قبول کن**
+                    mapped_developers.append(developer_mapping[best_match])
+
+            if mapped_developers:  # **اگر شرکت‌هایی پیدا شدند، به `filters` اضافه شود**
+                filters["developer_company_id"] = mapped_developers
+
+    if post_delivery is not None:
+        filters["post_delivery"] = 1 if post_delivery in ["Yes", "1"] else 0
+
+    if payment_plan is not None:
+        filters["payment_plan"] = 1 if payment_plan in ["Yes", "1"] else 0
+
+    if guarantee_rental is not None:
+        filters["guarantee_rental_guarantee"] = 1 if guarantee_rental in ["Yes", "1"] else 0
+
+    filters["property_status"] = 'Off Plan'
+    filters["sales_status"] = [1]
+
     print(filters)
 
     response = requests.post(f"{ESTATY_API_URL}/filter", json=filters, headers=HEADERS)
@@ -1106,10 +1351,350 @@ def find_districts_by_budget(max_price, bedrooms=None, apartment_typ=None, min_p
 
     # ✅ ایجاد پاسخ مناسب برای کاربر
     response_text = "**📍 مناطقی که با بودجه شما مناسب هستند:**\n"
+    top_districts = []
     for district, count in sorted_districts[:5]:  # نمایش ۵ منطقه برتر
         response_text += f"- **{district}** ({count} ملک موجود)\n"
+        top_districts.append(district)
+    memory_district["suggested_districts"] = top_districts
 
     return response_text
+
+
+def find_price(district=None, bedrooms=None, apartment_typ=None, facilities=None, developer_company=None, delivery_date=None, post_delivery=None, payment_plan=None, guarantee_rental=None):
+
+    """جستجوی مناطق مناسب با توجه به بودجه و تعداد اتاق‌خواب"""
+    filters = {}
+
+    if bedrooms is not None:
+        bedrooms_count = str(bedrooms).strip().title()  # مقدار را به رشته تبدیل کن
+
+        bedrooms_mapping = {
+            "1": 10,
+            "1.5": 23,
+            "2": 11,
+            "2.5": 24,
+            "3": 12,
+            "3.5": 25,
+            "4": 13,
+            "4.5": 26,
+            "5": 14,
+            "5.5": 27,
+            "6": 15,
+            "6.5": 28,
+            "7": 16,
+            "7.5": 29,
+            "8": 17,
+            "9": 18,
+            "10": 19,
+            "11": 22,
+            "Studio": 9,       
+            "Penthouse": 34,   
+            "Retail": 31,      
+            "Office": 20,      
+            "Showroom": 35,    
+            "Store": 30,       
+            "Suite": 32,       
+            "Hotel Room": 33,   
+            "Full Floor": 36,  
+            "Land / Plot": 21  
+        }
+
+        # مقدار `property_type` را به `id` تغییر بده
+        filters["apartments"] = [bedrooms_mapping.get(bedrooms_count, bedrooms_count)]
+
+
+    if apartment_typ is not None:
+        apartment_typ = str(apartment_typ).strip().title()  # تبدیل به فرمت استاندارد
+                # ✅ دیکشنری نگاشت نوع آپارتمان به `id`
+        apartment_type_mapping = {
+                    "Apartment": 1,
+                    "Building": 31,
+                    "Duplex": 27,
+                    "Full Floor": 4,
+                    "Hotel": 32,
+                    "Hotel Apartment": 8,
+                    "Land / Plot": 6,
+                    "Loft": 34,
+                    "Office": 7,
+                    "Penthouse": 10,
+                    "Retail": 33,
+                    "Shop": 29,
+                    "Show Room": 30,
+                    "Store": 25,
+                    "Suite": 35,
+                    "Townhouse": 9,
+                    "Triplex": 28,
+                    "Villa": 3,
+                    "Warehouse": 26
+                }
+
+                # ✅ تبدیل مقدار `property_type` به `id` معادل آن
+        filters["apartmentTypes"] = [apartment_type_mapping.get(apartment_typ, apartment_typ)]
+
+    if district is not None:
+        district_i = str(district).strip().title()  # مقدار را به رشته تبدیل کن
+
+        district_mapping = {
+            'Masdar City': 340, 'Meydan': 133, 'Wadi AlSafa 2': 146, 'Wadi AlSafa 5': 246, 'Alamerah': 279,
+            'JVC': 243, 'Remraam': 284, 'Aljadaf': 122, 'Liwan': 294, 'Arjan': 201, 'Dubai Creek Harbour': 152,
+            'Damac Lagoons': 259, 'Dubai Downtown': 143, 'Muwaileh': 304, 'Palm Jumeirah': 134, 'Business Bay': 252,
+            'City Walk': 228, 'Emaar South': 354, 'Dubai Production City': 217, 'Nadd Al Shiba': 355, 'Dubai Hills': 241,
+            'Jabal Ali Industrial Second': 131, 'AlYelayiss 2': 162, 'Town Square Dubai': 275, 'Majan': 231, 'Ramhan Island': 315,
+            'AlKifaf': 167, 'Alyasmeen': 310, 'Sports City': 203, 'Mbr District One': 319, 'Alraha': 352, 'Damac Hills 2': 213,
+            'Wadi AlSafa 4': 189, 'Expo City': 292, 'Almarjan Island': 297, 'Zaabeel Second': 120, 'Yas Island': 303,
+            'Zayed City': 295, 'Port Rashid': 378, 'Alhamra Island': 278, 'Jabal Ali First': 130, 'Dubai Land Residence Complex': 307,
+            'Reem Island': 298, 'Dubai Investment Park': 156, 'The Oasis': 363, 'Alheliow1': 311, 'Dubai South': 328, 'The Valley': 361,
+            'JVT': 244, 'Rashid Yachts and Marina': 383, 'Golf City': 266, 'Jebel Ali Village': 345, 'Alhudayriyat Island': 365,
+            'Damac Hills': 210, 'Alzorah': 364, 'Alfurjan': 346, 'Discovery Gardens': 235, 'Dubai Islands': 233, 'Alsatwa': 273,
+            'Dubai Motor City': 124, 'Palm Jabal Ali': 161, 'Saadiyat Island': 296, 'Dubai Marina': 239, 'Dubai Industrial City': 308,
+            'Mina Alarab': 293, 'Sobha Hartland': 332, 'Alwasl': 141, 'Bluewaters Bay': 286, 'JLT': 212, 'World Islands': 247,
+            'Mirdif': 163, 'Jumeirah Island One': 150, 'City Of Arabia': 236, 'Alreem Island': 264, 'Almaryah': 337,
+            'Albarsha South': 341, 'Aljada': 327, 'International City Phase (2)': 309, 'Alshamkha': 362, 'Ghaf Woods': 389,
+            'Hamriya West': 353, 'Al Yelayiss 1': 397, 'Al Tay': 343, 'Studio City': 316, 'Maryam Island': 314, 'Rukan Community': 414,
+            'Madinat Jumeirah Living': 285, 'Dubai Maritime City': 216, 'Wadi Al Safa 7': 261, 'Alzahya': 312, 'Jumeirah Park': 317,
+            'Bukadra': 349, 'Alsafouh Second': 407, 'Dubai Sports City': 342, 'Al Barsha South Second': 409, 'Mohammed Bin Rashid City': 318,
+            'Jumeirah 2': 334, 'Uptown, AlThanyah Fifth': 220, 'Wadi AlSafa 3': 187, 'Jumeirah Heights': 402, 'Dubai Silicon Oasis': 245,
+            'Dubai Design District': 230, 'Tilal AlGhaf': 199, 'Albelaida': 280, 'Jumeirah Beach Residence': 375, 'Dubai International Financial Centre (DIFC)': 333,
+            'Dubai Water Canal': 387, 'Al Barsha 1': 400, 'Alwadi Desert': 406, 'Jumeirah Golf Estates': 291, 'Warsan Fourth': 249,
+            'Meydan D11': 404, 'Nad Alsheba 1': 413, 'Aljurf': 359, 'MBR City D11': 368, 'International City': 248,
+            'Alrashidiya 1': 386, 'Free Zone': 367, 'Dubai Internet City': 398, 'Khalifa City': 357, 'Ghantoot': 358,
+            'Alnuaimia 1': 392, 'Alhamriyah': 415, 'Barsha Heights': 385, 'Ajmal Makan City': 276, 'Motor City': 326,
+            'Legends': 412, 'Sharm': 374, 'AlSafouh First': 125, 'Barashi': 305, 'Al Maryah Island': 399, 'Jumeirah Garden City': 356,
+            'Dubai Investment Park 2': 366, 'Sheikh Zayed Road, Alsafa': 263, 'Dubai Land': 417, 'Madinat Almataar': 250,
+            'Emaar Beachfront': 391, 'Dubai Harbour': 242, 'Alheliow2': 313, 'Alsuyoh Suburb': 324, 'Tilal': 325,
+            'Almuntazah': 339, 'Alrashidiya 3': 321, 'Alsafa': 268, 'Almamzar': 306, 'Sobha Hartland 2': 408, 'Siniya Island': 360,
+            'Ras AlKhor Ind. First': 257, 'Albarari': 418, 'Alwaha': 416, 'Dubai Science Park': 351, 'Ain Al Fayda': 369,
+            'Marina': 336, 'Dubai Healthcare City': 238, 'Trade Center First': 148, 'Damac Islands': 394,
+            'The Heights Country Club': 396, 'Al Yelayiss 5': 411, 'Hayat Islands': 283, 'Mina AlArab, Hayat Islands': 282,
+            'Dubai Media City': 258, 'Al Khalidiya': 382, 'AlBarsha South Fourth': 301, 'Alrahmaniya': 390, 'AlBarsha South Fifth': 123,
+            "AlFaqa'": 329, 'Raha Island': 347
+            
+        }
+
+        best_match, score = process.extractOne(district_i, district_mapping.keys())
+        print(f"📌 بهترین تطابق fuzzy: {best_match} (امتیاز: {score})")  # نمایش اطلاعات برای دیباگ
+            
+        if score > 70:  # **اگر دقت بالای ۷۰٪ بود، مقدار را قبول کن**
+            filters["district"] = best_match  # ✅ **ذخیره نام منطقه به جای ID**
+
+    if facilities is not None:
+        facilities_list = facilities  # دریافت امکانات از `extracted_data`
+
+        # **بررسی و تبدیل `facilities` به لیست در صورت نیاز**
+        if isinstance(facilities_list, str):
+            # facilities_list = [facilities_list]  # تبدیل رشته به لیست تک‌عضوی
+            facilities_list = [x.strip() for x in facilities_list.split(",") if x.strip()]
+        
+        facilities_mapping = {
+                "24 hour security": "408",
+                "24/7 Security and Maintenance Services": "399",
+                "Access Control System": "314",
+                "Air Fitness zones": "570",
+                "Art Garden": "510",
+                "BBQ Area": "21",
+                "Baby Care Centre": "163",
+                "Badminton Court": "100",
+                "Balcony": "76",
+                "Basketball Court": "427",
+                "Basketball Playground": "10",
+                "Beach": "387",
+                "Beach Club": "595",
+                "Beauty Saloon": "106",
+                "Bicycle parking": "348",
+                "Bike Paths": "52",
+                "Bike tracks": "458",
+                "Bocce Play Area": "525",
+                "Broadband Internet": "46",
+                "Building Management System": "325",
+                "Business Centre": "175",
+                "CCTV Surveillance": "313",
+                "Cabana Seating": "88",
+                "Cafe": "184",
+                "Central A/C & Heating": "47",
+                "Changing Room and Locker": "533",
+                "Chess Board": "97",
+                "Children's Play Area": "6",
+                "Children's Swimming Pool": "7",
+                "Cinema": "19",
+                "Clinic": "279",
+                "Close Circuit TV System": "323",
+                "Club House": "226",
+                "Co-Working Spaces": "221",
+                "Community hubs": "460",
+                "Concierge Service": "37",
+                "Covered Parking": "31",
+                "Cricket Pitch": "95",
+                "Cycling Track": "276",
+                "Direct Beach Access": "96",
+                "Dog Park": "363",
+                "Electric Vehicle Charging Stations": "229",
+                "Fitness Area": "424",
+                "Fitness Club": "50",
+                "Fitness studio": "397",
+                "Football Playground": "9",
+                "Games Lounge Room": "269",
+                "Garden": "11",
+                "Gym": "334",
+                "Gymnasium": "454",
+                "Health Club": "102",
+                "Hospital": "368",
+                "Jogging Track": "105",
+                "Kids Pool": "381",
+                "Kids Swimming Pool": "452",
+                "Laundry Room": "107",
+                "Library": "87",
+                "Mall": "111",
+                "Meeting Rooms": "369",
+                "Mini Golf": "96",
+                "Mosque": "204",
+                "Music Room": "268",
+                "Nursery": "217",
+                "Outdoor Gym": "26",
+                "Padel Tennis": "467",
+                "Park": "54",
+                "Parking": "405",
+                "Pet Shop": "281",
+                "Pharmacy": "57",
+                "Play Area": "425",
+                "Playground": "319",
+                "Pool Deck": "415",
+                "Private Cinema For Each Unit": "364",
+                "Private Parking for Each unit": "484",
+                "Security": "40",
+                "SPA": "43",
+                "Sauna": "13",
+                "Sauna & Steam Room": "144",
+                "School": "49",
+                "Shared Outdoor Swimming Pool": "20",
+                "Skate Park": "428",
+                "Smart Homes": "378",
+                "Squash Courts": "209",
+                "Supermarket": "56",
+                "Swimming Pool": "74",
+                "Tennis Playground": "8",
+                "Theater": "19",
+                "VR Game Room": "382",
+                "Water Fountain": "356",
+                "Veterinary Clinic": "280",
+                "Yoga": "167",
+                "Zen Garden": "511",
+                "Kids Club": "331",
+                "Safe & Secure": "529"
+        }
+
+        if isinstance(facilities_list, list):  # بررسی اینکه ورودی یک لیست باشد
+            mapped_facilities = []
+
+            for facility in facilities_list:
+                best_match, score = process.extractOne(facility.strip(), facilities_mapping.keys())
+
+                if score > 70:  # **فقط اگر دقت بالای ۷۰٪ بود، مقدار را قبول کن**
+                    mapped_facilities.append(facilities_mapping[best_match])
+
+            if mapped_facilities:  # **اگر امکاناتی پیدا شد، به `filters` اضافه شود**
+                filters["facilities"] = mapped_facilities
+
+
+    if developer_company is not None:
+        developer_list = developer_company  # دریافت نام شرکت توسعه‌دهنده
+
+        # **بررسی و تبدیل `developer_company` به لیست در صورت نیاز**
+        if isinstance(developer_list, str):
+            developer_list = [developer_list]  # تبدیل رشته به لیست تک‌عضوی
+
+        developer_mapping = {
+                'Burtville Developments': 330, 'Ellington Properties': 50, 'Sobha': 3, 'Tiger Properties': 103,
+                'Azizi': 37, 'GJ Properties': 326, 'Green Group': 346, 'Meraas': 70, 'Dubai Properties': 258,
+                'Confident Group': 308, 'Iman Developers': 61, 'EMAAR': 2, 'Damac': 318, 'Shapoorji Pallonji': 91,
+                'Arada Properties': 35, 'Omniyat': 77, 'Oro24': 241, 'Prestige One': 80, 'Deyaar': 45, 'Select Group': 85,
+                'Nshama': 76, 'Marquis Point': 274, 'Arenco Real Estate': 398, 'Rijas Aces Property': 233, 'Eagle Hills': 299,
+                'Wasl': 109, 'London Gate': 264, 'Nakheel': 74, 'Reportage': 232, 'GFH': 60, 'Expo City': 54, 'AYS Developments': 36,
+                'Imtiaz': 87, 'Park Group': 366, 'Almazaya Holding': 68, 'Samana Developers': 83, 'Aldar': 32, 'Bloom Holding': 270,
+                'AG Properties': 317, 'Swank Development': 393, 'Binghatti': 38, 'Divine One Group': 311, 'Emirates properties': 267,
+                'Dubai South': 323, 'Pearlshire Developments': 329, 'Gulf Land': 239, 'Radiant': 269, 'Modon Properties': 394,
+                'Alzorah Development': 383, 'Algouta Properties': 380, 'Majid Al Futtaim Group': 111, 'HMB': 247, 'Naseeb Group': 265,
+                'Amwaj Development': 348, 'Condor Group': 41, 'Grid properties': 296, 'Enso Development': 403, 'Aqua Properties': 34,
+                'SRG Holding': 95, 'Dugasta': 276, 'Roya Lifestyle Developments': 338, 'Meteora': 278, 'Aqasa Developers': 333,
+                'Zimaya Properties': 392, 'Citi Developers': 283, 'Amali Properties': 341, 'Dubai Invesment': 254, 'Credo': 324,
+                'AAF Development': 409, 'Saas Properties': 300, 'Object 1': 237, 'Meraki Developers': 71, 'Dalands Developer': 427,
+                'Taraf': 100, 'The Heart of Europe': 101, 'HRE Development': 399, 'Lootah': 65, 'AJ Gargash Real Estate': 465,
+                'Sol Properties': 94, 'Townx Real Estate': 105, 'Ajmal Makan': 260, 'Symbolic': 97, 'Mashriq Elite': 332,
+                'Nabni developments': 294, 'Danube Properties': 42, 'IFA Hotels & Resorts': 486, 'Q Properties': 408,
+                'ARAS Real Estate': 293, 'East & West Properties': 49, 'Amaya Properties LLC': 413, 'H&H': 315, 'Laya': 238,
+                'Leos': 240, 'Pure Gold': 256, 'Empire Development': 52, 'KASCO Development': 433, 'Swiss Properties': 96,
+                'Beyond': 443, 'Rabdan': 289, 'Esnad Management': 421, 'Durar': 320, 'Signature D T': 203, 'ABA Group': 336,
+                'Luxe Developer': 327, 'Vincitore': 108, 'Uniestate Properties': 107, 'Avelon Developments': 287, 'Rokane': 417,
+                'Orange': 303, 'Iraz Developments': 335, 'Aqaar': 305, 'Keymavens development': 345, 'Peak Summit Real Estate Development': 350,
+                'Baraka Development': 304, 'LMD Real Estate': 227, 'Arista Properties': 321, 'Ginco Properties': 374,
+                'Lacasa Living': 477, 'Wow Resorts': 405, 'Aark Developers': 26, 'Pantheon Development': 78, 'DV8 Developers': 423,
+                "Mada'in": 154, 'Mubadala': 468, 'Lucky Aeon': 66, 'Meydan': 422, 'Anax Developments': 301, 'Shoumous': 261,
+                'Five Holdings': 56, 'Acube Developments': 309, 'World Of Wonders': 291, 'Palladium Development': 356,
+                'Skyline Builders': 285, "Khamas Group Of Investment Co's": 363, 'Baccarat': 370, 'Metac Properties L.L.C': 23,
+                'Riviera Group': 298, 'MAG': 242, 'Kingdom Properties': 456, 'MeDoRe': 255, 'Revolution': 342, 'BNH Real Estate Developer': 429,
+                'Esnaad': 302, 'Takmeel Real Estate': 314, 'Mered': 288, 'Emerald Palace Group': 51, 'RAK Properties': 245,
+                'Fortune 5': 58, 'Siadah International Real Estate': 406, 'Peace Homes Development': 250, 'BnW Developments': 382,
+                'Tuscany Real Estate Development': 396, 'One Development': 425, 'AHS Properties': 319, 'ARIB Developments': 389,
+                'Alseeb Real Estate Development': 442, 'Tarrad Real Estate': 451, 'Stamn Development': 440, 'Vantage Properties': 469,
+                'Range Developments': 479, 'Zane Development': 481, 'Alta Real Estate Development': 491, 'Qube Development': 354,
+                'Green Yard Properties': 412, 'MGS Development': 353, 'Mira Developments': 282, 'True Future Development': 495,
+                'Sama Ezdan': 205, 'AiZN Development': 404, 'Wellington Developments': 497, 'Ohana Developments': 369,
+                'Heilbronn Properties': 339, 'Seven Tides': 89, 'Kamdar developments': 470, 'IGO': 259, 'Ahmadyar Developments': 375,
+                'Karma': 62, 'Imkan': 371, 'LAPIS Properties': 419, 'S&S Real Estate': 499, 'Fakhruddin Properties': 55,
+                'Saba Property Developers': 416, 'Majid Developments': 401, 'JRP Development': 410, 'DarGlobal': 44,
+                'HVM Living': 484, 'Segrex': 284, 'Mr. Eight Development': 430, 'Golden Wood': 407, 'EL Prime Properties': 431,
+                'Wellcube.life': 395, 'Mubarak Al Beshara Real Estate Development': 420, 'Source of Fate': 434, 'Dar Alkarama': 43,
+                'Palma Holding': 340, 'Shurooq Development': 435, 'Vakson Real Estate': 358, 'Tasmeer Indigo Properties': 352,
+                'AB Developers': 367, 'Alzarooni Development': 444, 'Amaal': 498, 'Wahat Al Zaweya': 397, 'Galaxy': 379,
+                'MS Homes': 376, 'MAK Developers': 415, 'City View Developments': 391, 'Reef Luxury Development': 424,
+                'Blanco Thornton Properties': 402, 'ADE Properties': 446, 'IRTH': 372, 'Forum Real Estate': 387,
+                'Nine Yards Development': 494, 'One Yard': 200, 'AAA Development': 441, 'Nine Development': 411,
+                'vision developments': 390, 'Alef Group': 273, 'Svarn': 368, 'Valores': 480, 'Crystal Bay Development': 377,
+        }
+
+        if isinstance(developer_list, list):  # بررسی اینکه ورودی یک لیست باشد
+            mapped_developers = []
+
+            for developer in developer_list:
+                best_match, score = process.extractOne(developer.strip(), developer_mapping.keys())
+
+                if score > 70:  # **فقط اگر دقت بالای ۷۰٪ بود، مقدار را قبول کن**
+                    mapped_developers.append(developer_mapping[best_match])
+
+            if mapped_developers:  # **اگر شرکت‌هایی پیدا شدند، به `filters` اضافه شود**
+                filters["developer_company_id"] = mapped_developers
+
+    if post_delivery is not None:
+        filters["post_delivery"] = 1 if post_delivery in ["Yes", "1"] else 0
+
+    if payment_plan is not None:
+        filters["payment_plan"] = 1 if payment_plan in ["Yes", "1"] else 0
+
+    if guarantee_rental is not None:
+        filters["guarantee_rental_guarantee"] = 1 if guarantee_rental in ["Yes", "1"] else 0
+
+    filters["property_status"] = 'Off Plan'
+
+    filters["sales_status"] = [1]
+
+    print(filters)
+    # اضافه کردن فیلتر برای قیمت
+    properties = filter_properties(filters)
+
+    if not properties:
+        return f"❌ متأسفانه هیچ ملکی پیدا نشد."
+
+    # ✅ محاسبه رنج قیمت
+    prices = [prop.get("low_price", 0) for prop in properties if prop.get("low_price") is not None]
+        
+    if not prices:
+        return f"❌ متأسفانه اطلاعات قیمت موجود نیست."
+
+    min_price = min(prices)
+    max_price = max(prices)
+
+    response = f"💰 **رنج قیمت املاک با این مشخصات:**\n- کمترین قیمت: {min_price} درهم\n- بیشترین قیمت: {max_price} درهم"
+
+    return response
 
 
 
@@ -1120,7 +1705,7 @@ async def real_estate_chatbot(user_message: str) -> str:
 
     print(f"📌  user message : {user_message}")
 
-    global last_properties_list, current_property_index, memory_state
+    global last_properties_list, current_property_index, memory_state, developer_mapping, facilities_mapping
 
     # ✅ **۱. تشخیص اینکه پیام فقط یک سلام است یا سوالی در مورد ملک**
     greetings = ["سلام", "سلام خوبی؟", "سلام چطوری؟", "سلام وقت بخیر", "سلام روزت بخیر"]
@@ -1145,6 +1730,8 @@ async def real_estate_chatbot(user_message: str) -> str:
     
     **🔹 نوع پیام قبلی:** "{memory_state.get('previous_type', 'unknown')}"
 
+    **📌 لیست مناطقی که قبلاً به کاربر پیشنهاد شده‌اند:**
+    {memory_district.get("suggested_districts", [])}
 
     **لطفاً مشخص کنید که پیام کاربر به کدام یک از این دسته‌ها تعلق دارد:**
 
@@ -1157,9 +1744,16 @@ async def real_estate_chatbot(user_message: str) -> str:
 
 
     ❌ **این دسته را انتخاب نکنید اگر کاربر درباره روند خرید ملک در دبی سؤال کرده باشد.** 
-    ❌ **این دسته را انتخاب کن اگر کاربر در جستجوی قبلی خود 'search' بود و پیام جدیدش کامل کننده پیام قبلیش مثل قیمت یا منطقه یا تعداد اتاق خواب بود**  
+    ❌ **این دسته را انتخاب کن اگر کاربر نوع پیام قبلیش 'search' بود و پیام جدیدش کامل کننده پیام قبلیش مثل قیمت یا منطقه یا تعداد اتاق خواب بود**  
     ✅ وقتی پیام کاربر فقط یک عدد تک رقمی باشد (مثلاً "1"، "2"، "3") و در سوال قبلی از او تعداد اتاق پرسیده شده باشد این حالت رو انتخاب کن.
-
+    ✅ اگر پیام قبلی کاربر `search` بود و الان اطلاعات تکمیلی مثل منطقه، قیمت، امکانات یا تعداد اتاق داده، همچنان `search` باقی بمونه.
+    ✅ اگر کاربر در پیامش از عباراتی مثل "چی داری؟"، "ملکی هست؟"، "موردی داری؟" استفاده کرده و در کنارش نام منطقه یا پروژه هم گفته شده، این حالت را `search` انتخاب کن.
+    ✅ اگر کاربر از عباراتی مثل "چی داری؟"، "موردی هست؟"، "ملکی داری؟" استفاده کرده و در کنارش نام یک **منطقه**، **محله** هم آمده، این حالت را `search` انتخاب کن.
+    - اگر حالت قبلی پیام 'search' بود بعد الان کاربر فیلتر جدیدی مثل منطقه اضافه کرده این حالت رو انتخاب کن یعنی الان هم حالت رو 'search' قرار بده
+    - اگر نوع پیام قبلی 'district_search' بود و بعدش کاربر منطقه ای را نوشت حالت رو الان 'search' قرار بده
+    ✅ اگر پیام قبلی کاربر از نوع `district_search` یا `search` بود و در پیام جدید **فقط نام یک منطقه (مثلاً "تو المرجان آیلند معرفی کن")** آمده بود، این حالت را `search` در نظر بگیر.
+    ✅ اگر پیام قبلی `search` بوده و پیام جدید فقط اطلاعاتی مثل بودجه یا اتاق خواب اضافه کرده، این پیام نیز `search` باقی بماند.
+    ✅ اگر پیام کاربر شامل نام یک منطقه (مثل "بی‌زینس بی") و ویژگی ملک مانند قیمت یا نوع ملک (مثل "دو میلیونی"، "آپارتمان") بود، و پیام به وضوح هدفش دیدن املاک آن منطقه بود، این دسته را `search` انتخاب کن، حتی اگر برخی جزئیات مثل تعداد اتاق ذکر نشده باشد.
 
     ---
 
@@ -1184,16 +1778,20 @@ async def real_estate_chatbot(user_message: str) -> str:
     - "سرمایه‌گذاری در ملک تو دبی چطوره؟"  
     - "روند قیمت‌ املاک تو چند سال آینده چجوریه؟"  
 
+    ❌ اگر کاربر به دنبال ملک در منطقه یا پروژه خاصی است و از عباراتی مثل "چی داری؟" یا "موردی هست؟" استفاده می‌کند، این حالت را انتخاب نکن.
+
     ---
 
-    ### **۵. `buying_guide` - سوال درباره نحوه خرید ملک در دبی**  
-    ✅ وقتی کاربر **درباره روند خرید ملک، قوانین، ویزا یا مالیات یا درباره مناطق** بدون گفتن نام ملک سؤال می‌کند، مثلاً:  
+    ### **۵. `buying_guide` - سوال درباره نحوه خرید ملک در دبی یا راهنمای مناطق مناسب برای خرید**  
+    ✅ وقتی کاربر **درباره روند خرید ملک، قوانین، ویزا یا اقامت یا مالیات یا درباره مناطق** بدون گفتن نام ملک سؤال می‌کند، یا **می‌خواهد راهنمایی کلی درباره مناطق مناسب برای خرید خانه یا سرمایه‌گذاری دریافت کند** مثلاً:  
     - "چطور در دبی خانه بخرم؟"  
-    - "آیا خارجی‌ها می‌توانند در دبی ملک بخرند؟"  
+    - "آیا خارجی‌ها می‌توانند در دبی ملک بخرند؟"
+    - "چه مناطقی برای خرید خانه برای گرفتن اقامت طلایی مناسب است؟"    
     - "شرایط دریافت ویزای سرمایه‌گذاری چیه؟"  
     - "برای خرید ملک تو دبی باید مالیات بدم؟"  
 
     ❌ **این دسته را انتخاب نکنید اگر کاربر دنبال پیدا کردن یک خانه خاص باشد.**  
+    ❌ اگر کاربر به دنبال ملک در منطقه یا پروژه خاصی است و از عباراتی مثل "چی داری؟" یا "موردی هست؟" استفاده می‌کند، این حالت را انتخاب نکن.
 
     ---
 
@@ -1220,24 +1818,50 @@ async def real_estate_chatbot(user_message: str) -> str:
     - "چطوری میتونم واحدی در Onda by Kasco بخرم؟"  
     - "شرایط خرید ملک Onda by Kasco چیه؟"  
     - "قیمت نهایی با تخفیف برای این ملک چقدره؟"  
+
+    ❌ **اگر کاربر فقط درباره قوانین خرید یا نحوه کلی خرید بدون ذکر ملک خاصی بپرسد، این دسته را انتخاب نکن و `buying_guide` را انتخاب کن.**
+
+    🚨 **اگر نام پروژه یا ملک در جمله ذکر شده بود، حتماً دسته‌بندی `purchase` را انتخاب کن.**  
     ---
 
-    ### **۱۰. `budget_search` - جستجو منطقه**
-    ✅ وقتی کاربر **به دنبال مناطقی است که متناسب با بودجه‌اش باشند و سوال میپرسه که با بودجه مشخص منطقه معرفی کن و اگر فقط قیمت گفت این حالت رو انتخاب نکن**، مثلاً:
+    ### **۱۰. `district_search` - جستجو منطقه با یا بدون بودجه**
+    ✅ وقتی کاربر **به دنبال مناطقی است که متناسب با بودجه یا مشخصات خاصی باشند**، این حالت را انتخاب کن.  
+    - این حالت باید نه تنها در مواردی که بودجه مشخص است، بلکه در مواردی که کاربر فقط مشخصات (مثل تعداد اتاق یا امکانات) می‌خواهد نیز انتخاب شود.  
+    - اگر کاربر **بودجه‌ای مشخص نکرده باشد**، باز هم می‌تواند از این حالت استفاده کند، مشروط بر اینکه به دنبال **منطقه‌ی مناسب بر اساس سایر ویژگی‌ها** باشد.  
+    مثلاً:
     - "توی چه منطقه‌ای می‌تونم با ۱ میلیون درهم خانه دو خوابه بخرم؟"
     - "کجا آپارتمان یک‌خوابه زیر ۲ میلیون درهم پیدا می‌کنم؟"
+    - "خونه با قیمت دو میلیون تو کدوم منطقه میشه پیدا کرد؟"
     - "بهترین مناطق برای خرید ویلا با بودجه ۵ میلیون درهم کجا هستند؟"
 
-    🚨 **این حالت را انتخاب نکن اگر:**
-    - کاربر قبلاً جستجوی ملک انجام داده و فقط بودجه را اضافه کرده است. (در این صورت `search` را انتخاب کن.)
-
+    -اگر سوال کاربر مفهموش این ست که تو چه منطقه هایی میشه خانه با مشخصاتی که کاربر میگه پیدا کرد این حالت رو انتخاب کن
+    ✅ اگر کاربر بپرسد "در کدام منطقه میشه پیدا کرد؟" یا از عبارات مشابه مثل "تو کدوم منطقه پیدا میشه؟"، "کجا میشه پیدا کرد؟" استفاده کند و در جمله ویژگی‌هایی مثل قیمت، امکانات یا نوع ملک وجود داشته باشد، این دسته را `district_search` انتخاب کن.
+    
+    🚨 اگر کاربر فقط عدد (مثلاً بودجه) نوشته و پیام قبلی `search` بوده، این پیام را به اشتباه `district_search` انتخاب نکن. در این حالت هم باید `search` بماند.
+    🚨 **این حالت را انتخاب نکن اگر:**  کاربر قبلاً جستجوی ملک انجام داده و فقط بودجه را اضافه کرده است. (در این صورت `search` را انتخاب کن.)
     🚨 **این حالت را انتخاب نکن اگر کاربر مستقیماً درخواست جستجوی ملک داده باشد (در این صورت `search` را انتخاب کن).** 
+
     ---
 
     ### **۱۱. `search_no_bedroom` - جستجوی ملک بدون توجه به تعداد اتاق خواب**  
     ✅ وقتی کاربر **به‌طور خاص می‌گوید "فرقی ندارد"، "مهم نیست"، "هر چقدر باشه اوکیه"** در مورد تعداد اتاق خواب،  
 
     🚨 **در این حالت، مقدار `bedrooms` را `null` قرار بده و در خروجی JSON نوع پیام را `search` بگذار.**  
+
+    ---
+    ### **۱۲. `property_price` - قیمت ملک بر اساس ویژگی‌ها**  
+    ✅ این حالت را انتخاب کن وقتی کاربر می‌پرسد **"قیمت یک ملک با ویژگی‌هایی خاص چقدر است؟"**، یعنی دنبال جستجو یا معرفی پروژه نیست بلکه می‌خواهد **محدوده قیمت رو بدونه**.  
+
+    - معمولاً کلمات کلیدی مثل "در چه رنجی"، "چقدره" وجود داره.  
+    - ممکنه ویژگی‌هایی مثل **تعداد اتاق، منطقه، امکانات** گفته بشه، ولی سؤال درباره محدوده قیمته نه معرفی ملک.  
+    - "قیمت ملک تو بیزینس بی چنده؟"  
+    - "قیمت واحد یک‌خوابه تو بیزینس بی چنده؟" 
+    - "قیمت واحد دوخوابه با استخر تو چه رنجی است؟"  
+    - "آپارتمان تو مارینا چند درمیاد؟"  
+    - "قیمت واحد در جمیرا چقدره؟"  
+
+    ❌ **اگر سوال درباره قیمت یک ملک مشخص باشد (نه منطقه)، حالت `details` را انتخاب کن.**  
+    ✅ اگر کاربر فقط درباره قیمت ملک با ویژگی‌هایی مثل "تعداد اتاق"، "امکانات"، یا "منطقه" پرسیده بود، اما به‌دنبال جستجوی ملک نبود، این حالت را انتخاب کن.
 
     ---
 
@@ -1251,6 +1875,13 @@ async def real_estate_chatbot(user_message: str) -> str:
     اگر پیام قبلی کاربر ** search **بوده و الان اطلاعات تکمیلی داده برام حالت رو همان قرار بده
     ** اگر نوع پیام قبلی کاربر budget_search بود در پیام جدید search قرار بده**
     - اگر تاریخ تحویل در پیام داده شده حالت را 'search' قرار بده
+    - اگر پیام قبلی `search` بود و الان کاربر فقط ویژگی جدیدی اضافه کرده، همون `search` باقی بمونه.
+    📌 نکته مهم: اگر در پیام کاربر نام یکی از **مناطق یا پروژه‌های معروف دبی یا امارات** (مثل "بیزینس بی"، "جمیرا"، "داون‌تاون"، "دبی مارینا" و...) آمده باشد، حتی اگر کاربر نگفته باشد "منطقه‌ی..." یا "محله‌ی..."، آن را به عنوان منطقه در نظر بگیر و با توجه به آن دسته‌بندی مناسب (`search` یا `district_search`) را انتخاب کن.
+    - اگر پیام جدید کاربر حاوی نام منطقه‌ای از امارات بود (مثل "در بیزینس بی"، "تو المرجان آیلند") حتی بدون عبارت‌هایی مثل "در کدام منطقه"، و پیام قبلی کاربر از نوع `district_search` یا `search` بود، پیام جدید را نیز `search` در نظر بگیر.
+    - اگر پیام حاوی فقط یک منطقه بود ولی بدون درخواست مشخص برای ملک، و پیام قبلی `district_search` بود، فرض کن کاربر قصد دارد در آن منطقه ملک ببیند.
+    - اگر پیام قبلی کاربر `district_search` بوده و پیام جدید شامل یکی از مناطقی است که در `suggested_districts` آمده (چه به انگلیسی و چه ترجمه‌ی فارسی آن)، نوع پیام را `search` قرار بده چون کاربر داره در ادامه‌ی جستجو، یکی از مناطق قبلی را انتخاب می‌کنه.
+    ✅ اگر پیام قبلی `search` بوده و پیام جدید فقط اطلاعاتی مثل بودجه یا تعداد اتاق خواب اضافه کرده، این پیام نیز `search` باقی بماند.
+    - اگر پیام جدید فقط شامل عدد (مثلاً بودجه) و پیام قبلی `search` بوده، همچنان `search` باقی بماند و تغییر نده.
 
 
     **اگر کاربر درباره جزئیات یک ملک سوال کرده باشد، نوع اطلاعاتی که می‌خواهد مشخص کن:**  
@@ -1340,18 +1971,33 @@ async def real_estate_chatbot(user_message: str) -> str:
         detail_requested = None  # مقدار detail_requested را خالی کن
         return await process_purchase_request(user_message)   
     
-    if "budget_search" in response_type.lower():
+    if "district_search" in response_type.lower():
         extracted_data = extract_filters(user_message, memory_state)
         memory_state.update(extracted_data)
         max_price = extracted_data.get("max_price")
         min_price = extracted_data.get("min_price")
         apartment_typ = extracted_data.get("apartmentType")
         bedrooms = extracted_data.get("bedrooms")
+        facilities = extracted_data.get("facilities_name")
+        developer_company = extracted_data.get("developer_company")
+        delivery_date = extracted_data.get("delivery_date")
+        post_delivery = extracted_data.get("post_delivery")
+        payment_plan = extracted_data.get("payment_plan")
+        guarantee_rental = extracted_data.get("guarantee_rental_guarantee")
 
-        if max_price is None:
-            return "❌ لطفاً بودجه خود را مشخص کنید."
 
-        return find_districts_by_budget(max_price, bedrooms, apartment_typ, min_price)
+        return find_districts_by_budget(
+        max_price=max_price, 
+        min_price=min_price, 
+        bedrooms=bedrooms, 
+        apartment_typ=apartment_typ, 
+        facilities=facilities, 
+        developer_company=developer_company,
+        delivery_date=delivery_date,
+        post_delivery=post_delivery,
+        payment_plan=payment_plan,
+        guarantee_rental=guarantee_rental
+        )
 
 
 
@@ -1360,6 +2006,32 @@ async def real_estate_chatbot(user_message: str) -> str:
     
     if "buying_guide" in response_type.lower():
         return await fetch_real_estate_buying_guide(user_message)
+    
+    if "property_price" in response_type.lower():
+        extracted_data = extract_filters(user_message, memory_state)
+        district = extracted_data.get("district")
+        apartment_typ = extracted_data.get("apartmentType")
+        bedrooms = extracted_data.get("bedrooms")
+        facilities = extracted_data.get("facilities_name")
+        developer_company = extracted_data.get("developer_company")
+        delivery_date = extracted_data.get("delivery_date")
+        post_delivery = extracted_data.get("post_delivery")
+        payment_plan = extracted_data.get("payment_plan")
+        guarantee_rental = extracted_data.get("guarantee_rental_guarantee")
+
+
+        return find_price(
+        district=district, 
+        bedrooms=bedrooms, 
+        apartment_typ=apartment_typ, 
+        facilities=facilities, 
+        developer_company=developer_company,
+        delivery_date=delivery_date,
+        post_delivery=post_delivery,
+        payment_plan=payment_plan,
+        guarantee_rental=guarantee_rental
+        )
+
 
     
     # ✅ **۵. اگر درخواست جستجوی ملک است، فیلترها را استخراج کرده و ملک پیشنهاد بده**
@@ -1689,7 +2361,8 @@ async def real_estate_chatbot(user_message: str) -> str:
 
             # **بررسی و تبدیل `facilities` به لیست در صورت نیاز**
             if isinstance(facilities_list, str):
-                facilities_list = [facilities_list]  # تبدیل رشته به لیست تک‌عضوی
+                # facilities_list = [facilities_list]  # تبدیل رشته به لیست تک‌عضوی
+                facilities_list = [x.strip() for x in facilities_list.split(",") if x.strip()]
             
             facilities_mapping = {
                 "24 hour security": "408",
