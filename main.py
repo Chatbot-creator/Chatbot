@@ -558,7 +558,7 @@ async def generate_ai_summary(properties, start_index=0):
     number_property = 3
 
     if not properties:
-        return "متأسفانه هیچ ملکی با این مشخصات پیدا نشد. لطفاً بازه قیمتی یا تعداد اتاق خواب را تغییر دهید یا منطقه دیگری انتخاب کنید."
+        return "متأسفانه هیچ ملکی با این مشخصات پیدا نشد. لطفاً بازه قیمتی یا متراژ یا تعداد اتاق خواب را تغییر دهید یا منطقه دیگری انتخاب کنید."
 
     last_properties_list = properties
     comp_properties = properties
@@ -3477,7 +3477,7 @@ async def chat(request: ChatRequest):
 
     """ دریافت پیام کاربر و ارسال پاسخ از طریق هوش مصنوعی """
     bot_response = await real_estate_chatbot(request.message)
-    logging.info(f"bot_response: {bot_response}")
+    # logging.info(f"bot_response: {bot_response}")
     return {"response": bot_response}
 
 
