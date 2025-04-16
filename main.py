@@ -15,14 +15,14 @@ from openai import AsyncOpenAI
 import asyncio
 import logging
 
-logging.basicConfig(
-    level=logging.INFO,  # می‌تونی DEBUG یا WARNING هم بذاری
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("app.log"),  # ذخیره تو فایل
-        logging.StreamHandler()          # نمایش تو کنسول
-    ]
-)
+# logging.basicConfig(
+#     level=logging.INFO,  # می‌تونی DEBUG یا WARNING هم بذاری
+#     format='%(asctime)s - %(levelname)s - %(message)s',
+#     handlers=[
+#         logging.FileHandler("app.log"),  # ذخیره تو فایل
+#         logging.StreamHandler()          # نمایش تو کنسول
+#     ]
+# )
 
 cache = TTLCache(maxsize=100, ttl=600)
 
@@ -46,6 +46,7 @@ HEADERS = {
 
 import random
 memory_state = {}
+types = {}
 memory_district = {}
 last_property_id = None
 last_properties_list = []
@@ -162,53 +163,74 @@ def extract_filters(user_message: str, previous_filters: dict):
         }
     
     developer_mapping = {
-                'Burtville Developments': 330, 'Ellington Properties': 50, 'Sobha': 3, 'Tiger Properties': 103,
-                'Azizi': 37, 'GJ Properties': 326, 'Green Group': 346, 'Meraas': 70, 'Dubai Properties': 258,
-                'Confident Group': 308, 'Iman Developers': 61, 'EMAAR': 2, 'Damac': 318, 'Shapoorji Pallonji': 91,
-                'Arada Properties': 35, 'Omniyat': 77, 'Oro24': 241, 'Prestige One': 80, 'Deyaar': 45, 'Select Group': 85,
-                'Nshama': 76, 'Marquis Point': 274, 'Arenco Real Estate': 398, 'Rijas Aces Property': 233, 'Eagle Hills': 299,
-                'Wasl': 109, 'London Gate': 264, 'Nakheel': 74, 'Reportage': 232, 'GFH': 60, 'Expo City': 54, 'AYS Developments': 36,
-                'Imtiaz': 87, 'Park Group': 366, 'Almazaya Holding': 68, 'Samana Developers': 83, 'Aldar': 32, 'Bloom Holding': 270,
-                'AG Properties': 317, 'Swank Development': 393, 'Binghatti': 38, 'Divine One Group': 311, 'Emirates properties': 267,
-                'Dubai South': 323, 'Pearlshire Developments': 329, 'Gulf Land': 239, 'Radiant': 269, 'Modon Properties': 394,
-                'Alzorah Development': 383, 'Algouta Properties': 380, 'Majid Al Futtaim Group': 111, 'HMB': 247, 'Naseeb Group': 265,
-                'Amwaj Development': 348, 'Condor Group': 41, 'Grid properties': 296, 'Enso Development': 403, 'Aqua Properties': 34,
-                'SRG Holding': 95, 'Dugasta': 276, 'Roya Lifestyle Developments': 338, 'Meteora': 278, 'Aqasa Developers': 333,
-                'Zimaya Properties': 392, 'Citi Developers': 283, 'Amali Properties': 341, 'Dubai Invesment': 254, 'Credo': 324,
-                'AAF Development': 409, 'Saas Properties': 300, 'Object 1': 237, 'Meraki Developers': 71, 'Dalands Developer': 427,
-                'Taraf': 100, 'The Heart of Europe': 101, 'HRE Development': 399, 'Lootah': 65, 'AJ Gargash Real Estate': 465,
-                'Sol Properties': 94, 'Townx Real Estate': 105, 'Ajmal Makan': 260, 'Symbolic': 97, 'Mashriq Elite': 332,
-                'Nabni developments': 294, 'Danube Properties': 42, 'IFA Hotels & Resorts': 486, 'Q Properties': 408,
-                'ARAS Real Estate': 293, 'East & West Properties': 49, 'Amaya Properties LLC': 413, 'H&H': 315, 'Laya': 238,
-                'Leos': 240, 'Pure Gold': 256, 'Empire Development': 52, 'KASCO Development': 433, 'Swiss Properties': 96,
-                'Beyond': 443, 'Rabdan': 289, 'Esnad Management': 421, 'Durar': 320, 'Signature D T': 203, 'ABA Group': 336,
-                'Luxe Developer': 327, 'Vincitore': 108, 'Uniestate Properties': 107, 'Avelon Developments': 287, 'Rokane': 417,
-                'Orange': 303, 'Iraz Developments': 335, 'Aqaar': 305, 'Keymavens development': 345, 'Peak Summit Real Estate Development': 350,
-                'Baraka Development': 304, 'LMD Real Estate': 227, 'Arista Properties': 321, 'Ginco Properties': 374,
-                'Lacasa Living': 477, 'Wow Resorts': 405, 'Aark Developers': 26, 'Pantheon Development': 78, 'DV8 Developers': 423,
-                "Mada'in": 154, 'Mubadala': 468, 'Lucky Aeon': 66, 'Meydan': 422, 'Anax Developments': 301, 'Shoumous': 261,
-                'Five Holdings': 56, 'Acube Developments': 309, 'World Of Wonders': 291, 'Palladium Development': 356,
-                'Skyline Builders': 285, "Khamas Group Of Investment Co's": 363, 'Baccarat': 370, 'Metac Properties L.L.C': 23,
-                'Riviera Group': 298, 'MAG': 242, 'Kingdom Properties': 456, 'MeDoRe': 255, 'Revolution': 342, 'BNH Real Estate Developer': 429,
-                'Esnaad': 302, 'Takmeel Real Estate': 314, 'Mered': 288, 'Emerald Palace Group': 51, 'RAK Properties': 245,
-                'Fortune 5': 58, 'Siadah International Real Estate': 406, 'Peace Homes Development': 250, 'BnW Developments': 382,
-                'Tuscany Real Estate Development': 396, 'One Development': 425, 'AHS Properties': 319, 'ARIB Developments': 389,
-                'Alseeb Real Estate Development': 442, 'Tarrad Real Estate': 451, 'Stamn Development': 440, 'Vantage Properties': 469,
-                'Range Developments': 479, 'Zane Development': 481, 'Alta Real Estate Development': 491, 'Qube Development': 354,
-                'Green Yard Properties': 412, 'MGS Development': 353, 'Mira Developments': 282, 'True Future Development': 495,
-                'Sama Ezdan': 205, 'AiZN Development': 404, 'Wellington Developments': 497, 'Ohana Developments': 369,
-                'Heilbronn Properties': 339, 'Seven Tides': 89, 'Kamdar developments': 470, 'IGO': 259, 'Ahmadyar Developments': 375,
-                'Karma': 62, 'Imkan': 371, 'LAPIS Properties': 419, 'S&S Real Estate': 499, 'Fakhruddin Properties': 55,
-                'Saba Property Developers': 416, 'Majid Developments': 401, 'JRP Development': 410, 'DarGlobal': 44,
-                'HVM Living': 484, 'Segrex': 284, 'Mr. Eight Development': 430, 'Golden Wood': 407, 'EL Prime Properties': 431,
-                'Wellcube.life': 395, 'Mubarak Al Beshara Real Estate Development': 420, 'Source of Fate': 434, 'Dar Alkarama': 43,
-                'Palma Holding': 340, 'Shurooq Development': 435, 'Vakson Real Estate': 358, 'Tasmeer Indigo Properties': 352,
-                'AB Developers': 367, 'Alzarooni Development': 444, 'Amaal': 498, 'Wahat Al Zaweya': 397, 'Galaxy': 379,
-                'MS Homes': 376, 'MAK Developers': 415, 'City View Developments': 391, 'Reef Luxury Development': 424,
-                'Blanco Thornton Properties': 402, 'ADE Properties': 446, 'IRTH': 372, 'Forum Real Estate': 387,
-                'Nine Yards Development': 494, 'One Yard': 200, 'AAA Development': 441, 'Nine Development': 411,
-                'vision developments': 390, 'Alef Group': 273, 'Svarn': 368, 'Valores': 480, 'Crystal Bay Development': 377,
-            }
+        "Burtville Developments": 330, "Sobha": 3, "Tiger Properties": 103, "Azizi": 37, "Meraas": 70,
+        "Dubai Properties": 258, "Confident Group": 308, "Iman Developers": 61, "EMAAR": 2, "Shapoorji Pallonji": 91,
+        "Arada Properties": 35, "Ellington Properties": 50, "Select Group": 85, "Nshama": 76, "Arenco Real Estate": 398,
+        "Rijas Aces Property": 233, "Wasl": 109, "London Gate": 264, "Nakheel": 74, "GFH": 60,
+        "Expo City": 54, "AYS Developments": 36, "Imtiaz": 87, "Park Group": 366, "Prestige One": 80,
+        "Almazaya Holding": 68, "Samana Developers": 83, "Aldar": 32, "Bloom Holding": 270, "AG Properties": 317,
+        "Swank Development": 393, "Binghatti": 38, "Divine One Group": 311, "Emirates properties": 267,
+        "Dubai South": 323, "Pearlshire Developments": 329, "Gulf Land": 239, "Radiant": 269, "Modon Properties": 394,
+        "Oro24": 241, "Alzorah Development": 383, "Algouta Properties": 380, "Naseeb Group": 265, "GJ Properties": 326,
+        "Amwaj Development": 348, "Grid properties": 296, "Aqua Properties": 34, "SRG Holding": 95,
+        "Roya Lifestyle Developments": 338, "Omniyat": 77, "Aqasa Developers": 333, "Zimaya Properties": 392,
+        "Amali Properties": 341, "Credo": 324, "AAF Development": 409, "Dalands Developer": 427,
+        "The Heart of Europe": 101, "HRE Development": 399, "Lootah": 65, "AJ Gargash Real Estate": 465, "Damac": 318,
+        "Townx Real Estate": 105, "Symbolic": 97, "Nabni developments": 294, "Deyaar": 45, "Citi Developers": 283,
+        "Mashriq Elite": 332, "IFA Hotels & Resorts": 486, "Q Properties": 408, "ARAS Real Estate": 293,
+        "East & West Properties": 49, "H&H": 315, "Laya": 238, "Leos": 240, "Reportage": 232, "Empire Development": 52,
+        "Object 1": 237, "KASCO Development": 433, "Esnad Management": 421, "Majid Al Futtaim Group": 111,
+        "Signature D T": 203, "Sol Properties": 94, "Luxe Developer": 327, "Dugasta": 276, "Avelon Developments": 287,
+        "Rokane": 417, "LMD Real Estate": 227, "Source of Fate": 434, "Vision developments": 390,
+        "Peace Homes Development": 250, "JRP Development": 410, "MAG": 242, "Riviera Group": 298, "Durar": 320,
+        "Meraki Developers": 71, "Uniestate Properties": 107, "Eagle Hills": 299, "IRTH": 372,
+        "Amaya Properties LLC": 413, "Ajmal Makan": 260, "Siroya Ventures Realty L.L.C": 445, "HMB": 247,
+        "Enso Development": 403, "Marquis Point": 274, "Meteora": 278, "Vincitore": 108, "Taraf": 100,
+        "ADE Properties": 446, "Baccarat": 370, "Condor Group": 41, "Rabdan": 289, "Pure Gold": 256,
+        "Saas Properties": 300, "Dubai Invesment": 254, "Swiss Properties": 96, "Beyond": 443, "Green Group": 346,
+        "Mubadala": 468, "Main Realty": 334, "Danube Properties": 42, "Ambs Real Estate": 360, "MeDoRe": 255,
+        "Heilbronn Properties": 339, "Maaia Developments": 517, "Ginco Properties": 374, "Qube Development": 354,
+        "Orange": 303, "Alseeb Real Estate Development": 442, "Peak Summit Real Estate Development": 350,
+        "Regent Developers": 501, "Mr. Eight Development": 430, "BnW Developments": 382, "Tuscany Real Estate Development": 396,
+        "RAK Properties": 245, "Siadah International Real Estate": 406, "One Development": 425, "AHS Properties": 319,
+        "ARIB Developments": 389, "Segrex": 284, "DIFC": 502, "DarGlobal": 44, "Fortune 5": 58,
+        "Green Yard Properties": 412, "Ahmadyar Developments": 375, "Sankari Properties": 310, "Alta Real Estate Development": 491,
+        "Sama Ezdan": 205, "Stamn Development": 440, "Kamdar developments": 470, "BT Properties": 507, "IGO": 259,
+        "Orra Real Estate": 204, "Five Holdings": 56, "Karma": 62, "Almarwan Developments": 458,
+        "Khamas Group Of Investment Co's": 363, "Imkan": 371, "LAPIS Properties": 419, "Liv Developers": 64,
+        "S&S Real Estate": 499, "Fakhruddin Properties": 55, "Saba Property Developers": 416, "Majid Developments": 401,
+        "HVM Living": 484, "Golden Wood": 407, "EL Prime Properties": 431, "Wellcube.life": 395,
+        "Mubarak Al Beshara Real Estate Development": 420, "Dar Alkarama": 43, "Palma Holding": 340,
+        "Vantage Properties": 469, "Shurooq Development": 435, "Vakson Real Estate": 358, "Tasmeer Indigo Properties": 352,
+        "Acube Developments": 309, "Mada'in": 154, "Anax Developments": 301, "API": 455, "Alhamra": 351,
+        "AB Developers": 367, "Tarrad Real Estate": 451, "Esnaad": 302, "4 Direction Developers": 508,
+        "Alzarooni Development": 444, "Alma Developments": 500, "Reef Luxury Development": 424,
+        "Blanco Thornton Properties": 402, "Amaal": 498, "Wahat Al Zaweya": 397, "Alef Group": 273,
+        "One Yard": 200, "AAA Development": 441, "Ohana Developments": 369, "Forum Real Estate": 387,
+        "Nine Development": 411, "Nine Yards Development": 494, "Mira Developments": 282, "MAK Developers": 415,
+        "MS Homes": 376, "Crystal Bay Development": 377, "Galaxy": 379, "Advanced Properties": 268,
+        "City View Developments": 391, "Svarn": 368, "Centurion Developers": 464, "Union Properties": 364,
+        "Wellington Developments": 497, "Seven Mayfair Real Estate": 515, "DV8 Developers": 423, "Zenith Group": 513,
+        "AlMadar Investment L.L.C": 428, "Abou Eid Real Estate": 252, "Asak Real Estate": 485,
+        "Alhabtoor Group": 28, "Mill Hill Developer": 488, "Alaia Developments": 505, "True Future Development": 495,
+        "ARTE Development": 432, "Time Properties": 104, "GFS Builders & Developers": 471, "Zoya Developments": 386,
+        "Evera Real Estate Development": 467, "77 Shades of Green": 448, "BNH Real Estate Developer": 429,
+        "Oksa Developer": 475, "Alhelal Al zahaby": 452, "Kingdom Properties": 456, "Aark Developers": 26,
+        "Januss Developers": 447, "Grovy Real Estate": 210, "Range Developments": 479, "Matrix developments": 483,
+        "Shoumous": 261, "Lucky Aeon": 66, "Meydan": 422, "Pantheon Development": 78, "DMCC": 388,
+        "Arista Properties": 321, "DHG Properties": 295, "World Of Wonders": 291, "PMR Property": 450,
+        "Major Development’s": 292, "Takmeel Real Estate": 314, "Urban Properties": 385, "Emerald Palace Group": 51,
+        "Metac Properties L.L.C": 23, "Skyline Builders": 285, "Prescott": 357, "Vantage Ventures": 490,
+        "Zane Development": 481, "Yas Developers": 463, "Amirah Developments": 482, "Elysian Properties": 454,
+        "Nexus Developer": 449, "Hayaat Developments": 512, "Lincoln Star Real Estate": 466, "Arsenal East": 473,
+        "Laraix Developers": 511, "Aqaar": 305, "Baraka Development": 304, "Keymavens development": 345,
+        "The 100": 359, "Manam Real Estate Development": 438, "Almarina Holding": 474, "Dia Properties": 518,
+        "Iraz Developments": 335, "Seven Tides": 89, "Albait Alduwaliy Real Estate": 355,
+        "Palladium Development": 356, "Tabeer Developments": 98, "Lacasa Living": 477, "Wow Resorts": 405,
+        "Revolution": 342, "ABA Group": 336, "Cirrera Development": 516, "SOHO Development": 344,
+        "Signature Developers": 426, "Pinnacle Developers": 437, "BAMX Development": 519, "Mered": 288,
+        "AiZN Development": 404, "Octa Properties": 277, "Premier Choice": 520
+    }
 
     # تهیه لیست نام شرکت‌ها و مناطق برای پرامپت
     developer_names = ", ".join(developer_mapping.keys())
@@ -425,7 +447,7 @@ def extract_filters(user_message: str, previous_filters: dict):
             response_content = response_content.replace("```json", "").replace("```", "").strip()
 
         print("🔹 داده JSON پردازش شده:", response_content)
-        logging.info(f"extracted from user message: {response_content}")
+        # logging.info(f"extracted from user message: {response_content}")
         extracted_data = json.loads(response_content)
                 # حفظ فیلترهای قبلی اگر مقدار جدیدی ارائه نشده باشد
 
@@ -437,9 +459,21 @@ def extract_filters(user_message: str, previous_filters: dict):
         # بررسی اگر `bedrooms`, `max_price`, `district` مقدار داشته باشند، `search_ready` را `true` کن
         # , "developer_company", "post_delivery", "facilities_name", "guarantee_rental_guarantee", "payment_plan"
         # essential_keys = ["bedrooms", "max_price"]
-        essential_keys = ["bedrooms", "max_price", "min_price", "max_area", "min_area"]
-        # essential_keys = ["bedrooms", "max_price", "min_price"]
-
+        # # essential_keys = ["bedrooms", "max_price", "min_price"]
+        #----------------------------------------------------------
+        # essential_keys = ["bedrooms", "max_price", "min_price", "max_area", "min_area"]
+        
+        # for key in essential_keys:
+        #     if extracted_data.get(key) is None and memory_state.get(key) is not None:
+        #         extracted_data[key] = memory_state[key]  # ✅ مقدار قبلی را نگه دار
+        #----------------------------------------------------------
+        essential_keys = [
+            "bedrooms", "min_price", "max_price", "district", "city", "property_type",
+            "apartmentType", "payment_plan", "post_delivery", "developer_company",
+            "delivery_date", "guarantee_rental_guarantee", "facilities_name",
+            "sales_status", "min_area", "max_area"
+        ]
+        
         for key in essential_keys:
             if extracted_data.get(key) is None and memory_state.get(key) is not None:
                 extracted_data[key] = memory_state[key]  # ✅ مقدار قبلی را نگه دار
@@ -550,6 +584,83 @@ def extract_filters(user_message: str, previous_filters: dict):
 property_name_to_id = {}
 
 
+def sort_properties_by_developer_popularity(properties):
+    # لیست محبوب‌ترین توسعه‌دهنده‌ها
+    developers_by_popularity = [
+
+        # Tier 1: بسیار معروف و پیشرو
+        "EMAAR", "Damac", "Aldar", "Nakheel", "Dubai Properties", "Meraas", "Sobha", "Ellington Properties",
+        "Omniyat", "Select Group", "Wasl", "Azizi", "Binghatti", "Danube Properties", "Tiger Properties",
+
+        # Tier 2: شناخته‌شده و معتبر
+        "Arada Properties", "The Heart of Europe", "Samana Developers", "MAG", "Nshama", "Deyaar",
+        "IFA Hotels & Resorts", "RAK Properties", "Bloom Holding", "Imkan", "Reportage",
+        "Majid Al Futtaim Group", "Meydan", "Five Holdings", "Arenco Real Estate",
+        "Almazaya Holding", "Shapoorji Pallonji", "London Gate", "Riviera Group",
+
+        # Tier 3: در حال رشد و نوظهور
+        "Burtville Developments", "Confident Group", "Iman Developers", "Rijas Aces Property", "GFH",
+        "Expo City", "AYS Developments", "Imtiaz", "Park Group", "Prestige One", "AG Properties",
+        "Swank Development", "Divine One Group", "Emirates properties", "Dubai South", "Pearlshire Developments",
+        "Gulf Land", "Radiant", "Modon Properties", "Oro24", "Alzorah Development", "Algouta Properties",
+        "Naseeb Group", "GJ Properties", "Amwaj Development", "Grid properties", "Aqua Properties",
+        "SRG Holding", "Roya Lifestyle Developments", "Aqasa Developers", "Zimaya Properties", "Amali Properties",
+        "Credo", "AAF Development", "Dalands Developer", "HRE Development", "Lootah", "AJ Gargash Real Estate",
+        "Townx Real Estate", "Symbolic", "Nabni developments", "Citi Developers", "Mashriq Elite",
+        "Q Properties", "ARAS Real Estate", "East & West Properties", "H&H", "Laya", "Leos", "Empire Development",
+        "Object 1", "KASCO Development", "Esnad Management", "Signature D T", "Sol Properties", "Luxe Developer",
+        "Dugasta", "Avelon Developments", "Rokane", "LMD Real Estate", "Source of Fate", "Vision developments",
+        "Peace Homes Development", "JRP Development", "Durar", "Meraki Developers", "Uniestate Properties",
+        "Eagle Hills", "IRTH", "Amaya Properties LLC", "Ajmal Makan", "Siroya Ventures Realty L.L.C", "HMB",
+        "Enso Development", "Marquis Point", "Meteora", "Vincitore", "Taraf", "ADE Properties", "Baccarat",
+        "Condor Group", "Rabdan", "Pure Gold", "Saas Properties", "Dubai Invesment", "Swiss Properties",
+        "Beyond", "Green Group", "Mubadala", "Main Realty", "Ambs Real Estate", "MeDoRe", "Heilbronn Properties",
+        "Maaia Developments", "Ginco Properties", "Qube Development", "Orange", "Alseeb Real Estate Development",
+        "Peak Summit Real Estate Development", "Regent Developers", "Mr. Eight Development", "BnW Developments",
+        "Tuscany Real Estate Development", "Siadah International Real Estate", "One Development", "AHS Properties",
+        "ARIB Developments", "Segrex", "DIFC", "DarGlobal", "Fortune 5", "Green Yard Properties",
+        "Ahmadyar Developments", "Sankari Properties", "Alta Real Estate Development", "Sama Ezdan",
+        "Stamn Development", "Kamdar developments", "BT Properties", "IGO", "Orra Real Estate", "Karma",
+        "Almarwan Developments", "Khamas Group Of Investment Co's", "LAPIS Properties", "Liv Developers",
+        "S&S Real Estate", "Fakhruddin Properties", "Saba Property Developers", "Majid Developments",
+        "HVM Living", "Golden Wood", "EL Prime Properties", "Wellcube.life",
+        "Mubarak Al Beshara Real Estate Development", "Dar Alkarama", "Palma Holding", "Vantage Properties",
+        "Shurooq Development", "Vakson Real Estate", "Tasmeer Indigo Properties", "Acube Developments",
+        "Mada'in", "Anax Developments", "API", "Alhamra", "AB Developers", "Tarrad Real Estate", "Esnaad",
+        "4 Direction Developers", "Alzarooni Development", "Alma Developments", "Reef Luxury Development",
+        "Blanco Thornton Properties", "Amaal", "Wahat Al Zaweya", "Alef Group", "One Yard", "AAA Development",
+        "Ohana Developments", "Forum Real Estate", "Nine Development", "Nine Yards Development", "Mira Developments",
+        "MAK Developers", "MS Homes", "Crystal Bay Development", "Galaxy", "Advanced Properties",
+        "City View Developments", "Svarn", "Centurion Developers", "Union Properties", "Wellington Developments",
+        "Seven Mayfair Real Estate", "DV8 Developers", "Zenith Group", "AlMadar Investment L.L.C",
+        "Abou Eid Real Estate", "Asak Real Estate", "Alhabtoor Group", "Mill Hill Developer",
+        "Alaia Developments", "True Future Development", "ARTE Development", "Time Properties",
+        "GFS Builders & Developers", "Zoya Developments", "Evera Real Estate Development", "77 Shades of Green",
+        "BNH Real Estate Developer", "Oksa Developer", "Alhelal Al zahaby", "Kingdom Properties",
+        "Aark Developers", "Januss Developers", "Grovy Real Estate", "Range Developments", "Matrix developments",
+        "Shoumous", "Lucky Aeon", "Pantheon Development", "DMCC", "Arista Properties", "DHG Properties",
+        "World Of Wonders", "PMR Property", "Major Development’s", "Takmeel Real Estate", "Urban Properties",
+        "Emerald Palace Group", "Metac Properties L.L.C", "Skyline Builders", "Prescott", "Vantage Ventures",
+        "Zane Development", "Yas Developers", "Amirah Developments", "Elysian Properties", "Nexus Developer",
+        "Hayaat Developments", "Lincoln Star Real Estate", "Arsenal East", "Laraix Developers", "Aqaar",
+        "Baraka Development", "Keymavens development", "The 100", "Manam Real Estate Development",
+        "Almarina Holding", "Dia Properties", "Iraz Developments", "Seven Tides", "Albait Alduwaliy Real Estate",
+        "Palladium Development", "Tabeer Developments", "Lacasa Living", "Wow Resorts", "Revolution",
+        "ABA Group", "Cirrera Development", "SOHO Development", "Signature Developers", "Pinnacle Developers",
+        "BAMX Development", "Mered", "AiZN Development", "Octa Properties", "Premier Choice"
+    ]
+
+    # تبدیل لیست به دیکشنری {نام شرکت کوچک‌شده: رتبه}
+    developer_rank = {name.lower(): rank for rank, name in enumerate(developers_by_popularity)}
+
+    def get_rank(property_item):
+        developer_name = (
+            property_item.get("developer_company", {}).get("name", "").lower()
+        )
+        return developer_rank.get(developer_name, float("inf"))  # اگر پیدا نشد، ته لیست
+
+    return sorted(properties, key=get_rank)
+
 
 async def generate_ai_summary(properties, start_index=0):
     """ ارائه خلاصه کوتاه از املاک پیشنهادی به صورت تدریجی """
@@ -558,7 +669,10 @@ async def generate_ai_summary(properties, start_index=0):
     number_property = 3
 
     if not properties:
-        return "متأسفانه هیچ ملکی با این مشخصات پیدا نشد. لطفاً بازه قیمتی یا متراژ یا تعداد اتاق خواب را تغییر دهید یا منطقه دیگری انتخاب کنید."
+        return "متأسفانه هیچ ملکی با این مشخصات پیدا نشد. لطفاً بازه قیمتی یا تعداد اتاق خواب را تغییر دهید یا منطقه دیگری انتخاب کنید."
+
+    # properties = sort_properties_by_developer_popularity(properties)
+
 
     last_properties_list = properties
     comp_properties = properties
@@ -1383,52 +1497,73 @@ def find_districts_by_budget(max_price=None, min_price=None, max_area= None, min
             developer_list = [developer_list]  # تبدیل رشته به لیست تک‌عضوی
 
         developer_mapping = {
-                'Burtville Developments': 330, 'Ellington Properties': 50, 'Sobha': 3, 'Tiger Properties': 103,
-                'Azizi': 37, 'GJ Properties': 326, 'Green Group': 346, 'Meraas': 70, 'Dubai Properties': 258,
-                'Confident Group': 308, 'Iman Developers': 61, 'EMAAR': 2, 'Damac': 318, 'Shapoorji Pallonji': 91,
-                'Arada Properties': 35, 'Omniyat': 77, 'Oro24': 241, 'Prestige One': 80, 'Deyaar': 45, 'Select Group': 85,
-                'Nshama': 76, 'Marquis Point': 274, 'Arenco Real Estate': 398, 'Rijas Aces Property': 233, 'Eagle Hills': 299,
-                'Wasl': 109, 'London Gate': 264, 'Nakheel': 74, 'Reportage': 232, 'GFH': 60, 'Expo City': 54, 'AYS Developments': 36,
-                'Imtiaz': 87, 'Park Group': 366, 'Almazaya Holding': 68, 'Samana Developers': 83, 'Aldar': 32, 'Bloom Holding': 270,
-                'AG Properties': 317, 'Swank Development': 393, 'Binghatti': 38, 'Divine One Group': 311, 'Emirates properties': 267,
-                'Dubai South': 323, 'Pearlshire Developments': 329, 'Gulf Land': 239, 'Radiant': 269, 'Modon Properties': 394,
-                'Alzorah Development': 383, 'Algouta Properties': 380, 'Majid Al Futtaim Group': 111, 'HMB': 247, 'Naseeb Group': 265,
-                'Amwaj Development': 348, 'Condor Group': 41, 'Grid properties': 296, 'Enso Development': 403, 'Aqua Properties': 34,
-                'SRG Holding': 95, 'Dugasta': 276, 'Roya Lifestyle Developments': 338, 'Meteora': 278, 'Aqasa Developers': 333,
-                'Zimaya Properties': 392, 'Citi Developers': 283, 'Amali Properties': 341, 'Dubai Invesment': 254, 'Credo': 324,
-                'AAF Development': 409, 'Saas Properties': 300, 'Object 1': 237, 'Meraki Developers': 71, 'Dalands Developer': 427,
-                'Taraf': 100, 'The Heart of Europe': 101, 'HRE Development': 399, 'Lootah': 65, 'AJ Gargash Real Estate': 465,
-                'Sol Properties': 94, 'Townx Real Estate': 105, 'Ajmal Makan': 260, 'Symbolic': 97, 'Mashriq Elite': 332,
-                'Nabni developments': 294, 'Danube Properties': 42, 'IFA Hotels & Resorts': 486, 'Q Properties': 408,
-                'ARAS Real Estate': 293, 'East & West Properties': 49, 'Amaya Properties LLC': 413, 'H&H': 315, 'Laya': 238,
-                'Leos': 240, 'Pure Gold': 256, 'Empire Development': 52, 'KASCO Development': 433, 'Swiss Properties': 96,
-                'Beyond': 443, 'Rabdan': 289, 'Esnad Management': 421, 'Durar': 320, 'Signature D T': 203, 'ABA Group': 336,
-                'Luxe Developer': 327, 'Vincitore': 108, 'Uniestate Properties': 107, 'Avelon Developments': 287, 'Rokane': 417,
-                'Orange': 303, 'Iraz Developments': 335, 'Aqaar': 305, 'Keymavens development': 345, 'Peak Summit Real Estate Development': 350,
-                'Baraka Development': 304, 'LMD Real Estate': 227, 'Arista Properties': 321, 'Ginco Properties': 374,
-                'Lacasa Living': 477, 'Wow Resorts': 405, 'Aark Developers': 26, 'Pantheon Development': 78, 'DV8 Developers': 423,
-                "Mada'in": 154, 'Mubadala': 468, 'Lucky Aeon': 66, 'Meydan': 422, 'Anax Developments': 301, 'Shoumous': 261,
-                'Five Holdings': 56, 'Acube Developments': 309, 'World Of Wonders': 291, 'Palladium Development': 356,
-                'Skyline Builders': 285, "Khamas Group Of Investment Co's": 363, 'Baccarat': 370, 'Metac Properties L.L.C': 23,
-                'Riviera Group': 298, 'MAG': 242, 'Kingdom Properties': 456, 'MeDoRe': 255, 'Revolution': 342, 'BNH Real Estate Developer': 429,
-                'Esnaad': 302, 'Takmeel Real Estate': 314, 'Mered': 288, 'Emerald Palace Group': 51, 'RAK Properties': 245,
-                'Fortune 5': 58, 'Siadah International Real Estate': 406, 'Peace Homes Development': 250, 'BnW Developments': 382,
-                'Tuscany Real Estate Development': 396, 'One Development': 425, 'AHS Properties': 319, 'ARIB Developments': 389,
-                'Alseeb Real Estate Development': 442, 'Tarrad Real Estate': 451, 'Stamn Development': 440, 'Vantage Properties': 469,
-                'Range Developments': 479, 'Zane Development': 481, 'Alta Real Estate Development': 491, 'Qube Development': 354,
-                'Green Yard Properties': 412, 'MGS Development': 353, 'Mira Developments': 282, 'True Future Development': 495,
-                'Sama Ezdan': 205, 'AiZN Development': 404, 'Wellington Developments': 497, 'Ohana Developments': 369,
-                'Heilbronn Properties': 339, 'Seven Tides': 89, 'Kamdar developments': 470, 'IGO': 259, 'Ahmadyar Developments': 375,
-                'Karma': 62, 'Imkan': 371, 'LAPIS Properties': 419, 'S&S Real Estate': 499, 'Fakhruddin Properties': 55,
-                'Saba Property Developers': 416, 'Majid Developments': 401, 'JRP Development': 410, 'DarGlobal': 44,
-                'HVM Living': 484, 'Segrex': 284, 'Mr. Eight Development': 430, 'Golden Wood': 407, 'EL Prime Properties': 431,
-                'Wellcube.life': 395, 'Mubarak Al Beshara Real Estate Development': 420, 'Source of Fate': 434, 'Dar Alkarama': 43,
-                'Palma Holding': 340, 'Shurooq Development': 435, 'Vakson Real Estate': 358, 'Tasmeer Indigo Properties': 352,
-                'AB Developers': 367, 'Alzarooni Development': 444, 'Amaal': 498, 'Wahat Al Zaweya': 397, 'Galaxy': 379,
-                'MS Homes': 376, 'MAK Developers': 415, 'City View Developments': 391, 'Reef Luxury Development': 424,
-                'Blanco Thornton Properties': 402, 'ADE Properties': 446, 'IRTH': 372, 'Forum Real Estate': 387,
-                'Nine Yards Development': 494, 'One Yard': 200, 'AAA Development': 441, 'Nine Development': 411,
-                'vision developments': 390, 'Alef Group': 273, 'Svarn': 368, 'Valores': 480, 'Crystal Bay Development': 377,
+            "Burtville Developments": 330, "Sobha": 3, "Tiger Properties": 103, "Azizi": 37, "Meraas": 70,
+            "Dubai Properties": 258, "Confident Group": 308, "Iman Developers": 61, "EMAAR": 2, "Shapoorji Pallonji": 91,
+            "Arada Properties": 35, "Ellington Properties": 50, "Select Group": 85, "Nshama": 76, "Arenco Real Estate": 398,
+            "Rijas Aces Property": 233, "Wasl": 109, "London Gate": 264, "Nakheel": 74, "GFH": 60,
+            "Expo City": 54, "AYS Developments": 36, "Imtiaz": 87, "Park Group": 366, "Prestige One": 80,
+            "Almazaya Holding": 68, "Samana Developers": 83, "Aldar": 32, "Bloom Holding": 270, "AG Properties": 317,
+            "Swank Development": 393, "Binghatti": 38, "Divine One Group": 311, "Emirates properties": 267,
+            "Dubai South": 323, "Pearlshire Developments": 329, "Gulf Land": 239, "Radiant": 269, "Modon Properties": 394,
+            "Oro24": 241, "Alzorah Development": 383, "Algouta Properties": 380, "Naseeb Group": 265, "GJ Properties": 326,
+            "Amwaj Development": 348, "Grid properties": 296, "Aqua Properties": 34, "SRG Holding": 95,
+            "Roya Lifestyle Developments": 338, "Omniyat": 77, "Aqasa Developers": 333, "Zimaya Properties": 392,
+            "Amali Properties": 341, "Credo": 324, "AAF Development": 409, "Dalands Developer": 427,
+            "The Heart of Europe": 101, "HRE Development": 399, "Lootah": 65, "AJ Gargash Real Estate": 465, "Damac": 318,
+            "Townx Real Estate": 105, "Symbolic": 97, "Nabni developments": 294, "Deyaar": 45, "Citi Developers": 283,
+            "Mashriq Elite": 332, "IFA Hotels & Resorts": 486, "Q Properties": 408, "ARAS Real Estate": 293,
+            "East & West Properties": 49, "H&H": 315, "Laya": 238, "Leos": 240, "Reportage": 232, "Empire Development": 52,
+            "Object 1": 237, "KASCO Development": 433, "Esnad Management": 421, "Majid Al Futtaim Group": 111,
+            "Signature D T": 203, "Sol Properties": 94, "Luxe Developer": 327, "Dugasta": 276, "Avelon Developments": 287,
+            "Rokane": 417, "LMD Real Estate": 227, "Source of Fate": 434, "Vision developments": 390,
+            "Peace Homes Development": 250, "JRP Development": 410, "MAG": 242, "Riviera Group": 298, "Durar": 320,
+            "Meraki Developers": 71, "Uniestate Properties": 107, "Eagle Hills": 299, "IRTH": 372,
+            "Amaya Properties LLC": 413, "Ajmal Makan": 260, "Siroya Ventures Realty L.L.C": 445, "HMB": 247,
+            "Enso Development": 403, "Marquis Point": 274, "Meteora": 278, "Vincitore": 108, "Taraf": 100,
+            "ADE Properties": 446, "Baccarat": 370, "Condor Group": 41, "Rabdan": 289, "Pure Gold": 256,
+            "Saas Properties": 300, "Dubai Invesment": 254, "Swiss Properties": 96, "Beyond": 443, "Green Group": 346,
+            "Mubadala": 468, "Main Realty": 334, "Danube Properties": 42, "Ambs Real Estate": 360, "MeDoRe": 255,
+            "Heilbronn Properties": 339, "Maaia Developments": 517, "Ginco Properties": 374, "Qube Development": 354,
+            "Orange": 303, "Alseeb Real Estate Development": 442, "Peak Summit Real Estate Development": 350,
+            "Regent Developers": 501, "Mr. Eight Development": 430, "BnW Developments": 382, "Tuscany Real Estate Development": 396,
+            "RAK Properties": 245, "Siadah International Real Estate": 406, "One Development": 425, "AHS Properties": 319,
+            "ARIB Developments": 389, "Segrex": 284, "DIFC": 502, "DarGlobal": 44, "Fortune 5": 58,
+            "Green Yard Properties": 412, "Ahmadyar Developments": 375, "Sankari Properties": 310, "Alta Real Estate Development": 491,
+            "Sama Ezdan": 205, "Stamn Development": 440, "Kamdar developments": 470, "BT Properties": 507, "IGO": 259,
+            "Orra Real Estate": 204, "Five Holdings": 56, "Karma": 62, "Almarwan Developments": 458,
+            "Khamas Group Of Investment Co's": 363, "Imkan": 371, "LAPIS Properties": 419, "Liv Developers": 64,
+            "S&S Real Estate": 499, "Fakhruddin Properties": 55, "Saba Property Developers": 416, "Majid Developments": 401,
+            "HVM Living": 484, "Golden Wood": 407, "EL Prime Properties": 431, "Wellcube.life": 395,
+            "Mubarak Al Beshara Real Estate Development": 420, "Dar Alkarama": 43, "Palma Holding": 340,
+            "Vantage Properties": 469, "Shurooq Development": 435, "Vakson Real Estate": 358, "Tasmeer Indigo Properties": 352,
+            "Acube Developments": 309, "Mada'in": 154, "Anax Developments": 301, "API": 455, "Alhamra": 351,
+            "AB Developers": 367, "Tarrad Real Estate": 451, "Esnaad": 302, "4 Direction Developers": 508,
+            "Alzarooni Development": 444, "Alma Developments": 500, "Reef Luxury Development": 424,
+            "Blanco Thornton Properties": 402, "Amaal": 498, "Wahat Al Zaweya": 397, "Alef Group": 273,
+            "One Yard": 200, "AAA Development": 441, "Ohana Developments": 369, "Forum Real Estate": 387,
+            "Nine Development": 411, "Nine Yards Development": 494, "Mira Developments": 282, "MAK Developers": 415,
+            "MS Homes": 376, "Crystal Bay Development": 377, "Galaxy": 379, "Advanced Properties": 268,
+            "City View Developments": 391, "Svarn": 368, "Centurion Developers": 464, "Union Properties": 364,
+            "Wellington Developments": 497, "Seven Mayfair Real Estate": 515, "DV8 Developers": 423, "Zenith Group": 513,
+            "AlMadar Investment L.L.C": 428, "Abou Eid Real Estate": 252, "Asak Real Estate": 485,
+            "Alhabtoor Group": 28, "Mill Hill Developer": 488, "Alaia Developments": 505, "True Future Development": 495,
+            "ARTE Development": 432, "Time Properties": 104, "GFS Builders & Developers": 471, "Zoya Developments": 386,
+            "Evera Real Estate Development": 467, "77 Shades of Green": 448, "BNH Real Estate Developer": 429,
+            "Oksa Developer": 475, "Alhelal Al zahaby": 452, "Kingdom Properties": 456, "Aark Developers": 26,
+            "Januss Developers": 447, "Grovy Real Estate": 210, "Range Developments": 479, "Matrix developments": 483,
+            "Shoumous": 261, "Lucky Aeon": 66, "Meydan": 422, "Pantheon Development": 78, "DMCC": 388,
+            "Arista Properties": 321, "DHG Properties": 295, "World Of Wonders": 291, "PMR Property": 450,
+            "Major Development’s": 292, "Takmeel Real Estate": 314, "Urban Properties": 385, "Emerald Palace Group": 51,
+            "Metac Properties L.L.C": 23, "Skyline Builders": 285, "Prescott": 357, "Vantage Ventures": 490,
+            "Zane Development": 481, "Yas Developers": 463, "Amirah Developments": 482, "Elysian Properties": 454,
+            "Nexus Developer": 449, "Hayaat Developments": 512, "Lincoln Star Real Estate": 466, "Arsenal East": 473,
+            "Laraix Developers": 511, "Aqaar": 305, "Baraka Development": 304, "Keymavens development": 345,
+            "The 100": 359, "Manam Real Estate Development": 438, "Almarina Holding": 474, "Dia Properties": 518,
+            "Iraz Developments": 335, "Seven Tides": 89, "Albait Alduwaliy Real Estate": 355,
+            "Palladium Development": 356, "Tabeer Developments": 98, "Lacasa Living": 477, "Wow Resorts": 405,
+            "Revolution": 342, "ABA Group": 336, "Cirrera Development": 516, "SOHO Development": 344,
+            "Signature Developers": 426, "Pinnacle Developers": 437, "BAMX Development": 519, "Mered": 288,
+            "AiZN Development": 404, "Octa Properties": 277, "Premier Choice": 520
         }
 
         if isinstance(developer_list, list):  # بررسی اینکه ورودی یک لیست باشد
@@ -1469,7 +1604,7 @@ def find_districts_by_budget(max_price=None, min_price=None, max_area= None, min
     filters["sales_status"] = [1]
 
     print(filters)
-    logging.info(f"filter district: {filters}")
+    # logging.info(f"filter district: {filters}")
 
     response = requests.post(f"{ESTATY_API_URL}/filter", json=filters, headers=HEADERS)
 
@@ -1813,52 +1948,73 @@ def find_price(district=None, bedrooms=None, apartment_typ=None, max_area= None,
             developer_list = [developer_list]  # تبدیل رشته به لیست تک‌عضوی
 
         developer_mapping = {
-                'Burtville Developments': 330, 'Ellington Properties': 50, 'Sobha': 3, 'Tiger Properties': 103,
-                'Azizi': 37, 'GJ Properties': 326, 'Green Group': 346, 'Meraas': 70, 'Dubai Properties': 258,
-                'Confident Group': 308, 'Iman Developers': 61, 'EMAAR': 2, 'Damac': 318, 'Shapoorji Pallonji': 91,
-                'Arada Properties': 35, 'Omniyat': 77, 'Oro24': 241, 'Prestige One': 80, 'Deyaar': 45, 'Select Group': 85,
-                'Nshama': 76, 'Marquis Point': 274, 'Arenco Real Estate': 398, 'Rijas Aces Property': 233, 'Eagle Hills': 299,
-                'Wasl': 109, 'London Gate': 264, 'Nakheel': 74, 'Reportage': 232, 'GFH': 60, 'Expo City': 54, 'AYS Developments': 36,
-                'Imtiaz': 87, 'Park Group': 366, 'Almazaya Holding': 68, 'Samana Developers': 83, 'Aldar': 32, 'Bloom Holding': 270,
-                'AG Properties': 317, 'Swank Development': 393, 'Binghatti': 38, 'Divine One Group': 311, 'Emirates properties': 267,
-                'Dubai South': 323, 'Pearlshire Developments': 329, 'Gulf Land': 239, 'Radiant': 269, 'Modon Properties': 394,
-                'Alzorah Development': 383, 'Algouta Properties': 380, 'Majid Al Futtaim Group': 111, 'HMB': 247, 'Naseeb Group': 265,
-                'Amwaj Development': 348, 'Condor Group': 41, 'Grid properties': 296, 'Enso Development': 403, 'Aqua Properties': 34,
-                'SRG Holding': 95, 'Dugasta': 276, 'Roya Lifestyle Developments': 338, 'Meteora': 278, 'Aqasa Developers': 333,
-                'Zimaya Properties': 392, 'Citi Developers': 283, 'Amali Properties': 341, 'Dubai Invesment': 254, 'Credo': 324,
-                'AAF Development': 409, 'Saas Properties': 300, 'Object 1': 237, 'Meraki Developers': 71, 'Dalands Developer': 427,
-                'Taraf': 100, 'The Heart of Europe': 101, 'HRE Development': 399, 'Lootah': 65, 'AJ Gargash Real Estate': 465,
-                'Sol Properties': 94, 'Townx Real Estate': 105, 'Ajmal Makan': 260, 'Symbolic': 97, 'Mashriq Elite': 332,
-                'Nabni developments': 294, 'Danube Properties': 42, 'IFA Hotels & Resorts': 486, 'Q Properties': 408,
-                'ARAS Real Estate': 293, 'East & West Properties': 49, 'Amaya Properties LLC': 413, 'H&H': 315, 'Laya': 238,
-                'Leos': 240, 'Pure Gold': 256, 'Empire Development': 52, 'KASCO Development': 433, 'Swiss Properties': 96,
-                'Beyond': 443, 'Rabdan': 289, 'Esnad Management': 421, 'Durar': 320, 'Signature D T': 203, 'ABA Group': 336,
-                'Luxe Developer': 327, 'Vincitore': 108, 'Uniestate Properties': 107, 'Avelon Developments': 287, 'Rokane': 417,
-                'Orange': 303, 'Iraz Developments': 335, 'Aqaar': 305, 'Keymavens development': 345, 'Peak Summit Real Estate Development': 350,
-                'Baraka Development': 304, 'LMD Real Estate': 227, 'Arista Properties': 321, 'Ginco Properties': 374,
-                'Lacasa Living': 477, 'Wow Resorts': 405, 'Aark Developers': 26, 'Pantheon Development': 78, 'DV8 Developers': 423,
-                "Mada'in": 154, 'Mubadala': 468, 'Lucky Aeon': 66, 'Meydan': 422, 'Anax Developments': 301, 'Shoumous': 261,
-                'Five Holdings': 56, 'Acube Developments': 309, 'World Of Wonders': 291, 'Palladium Development': 356,
-                'Skyline Builders': 285, "Khamas Group Of Investment Co's": 363, 'Baccarat': 370, 'Metac Properties L.L.C': 23,
-                'Riviera Group': 298, 'MAG': 242, 'Kingdom Properties': 456, 'MeDoRe': 255, 'Revolution': 342, 'BNH Real Estate Developer': 429,
-                'Esnaad': 302, 'Takmeel Real Estate': 314, 'Mered': 288, 'Emerald Palace Group': 51, 'RAK Properties': 245,
-                'Fortune 5': 58, 'Siadah International Real Estate': 406, 'Peace Homes Development': 250, 'BnW Developments': 382,
-                'Tuscany Real Estate Development': 396, 'One Development': 425, 'AHS Properties': 319, 'ARIB Developments': 389,
-                'Alseeb Real Estate Development': 442, 'Tarrad Real Estate': 451, 'Stamn Development': 440, 'Vantage Properties': 469,
-                'Range Developments': 479, 'Zane Development': 481, 'Alta Real Estate Development': 491, 'Qube Development': 354,
-                'Green Yard Properties': 412, 'MGS Development': 353, 'Mira Developments': 282, 'True Future Development': 495,
-                'Sama Ezdan': 205, 'AiZN Development': 404, 'Wellington Developments': 497, 'Ohana Developments': 369,
-                'Heilbronn Properties': 339, 'Seven Tides': 89, 'Kamdar developments': 470, 'IGO': 259, 'Ahmadyar Developments': 375,
-                'Karma': 62, 'Imkan': 371, 'LAPIS Properties': 419, 'S&S Real Estate': 499, 'Fakhruddin Properties': 55,
-                'Saba Property Developers': 416, 'Majid Developments': 401, 'JRP Development': 410, 'DarGlobal': 44,
-                'HVM Living': 484, 'Segrex': 284, 'Mr. Eight Development': 430, 'Golden Wood': 407, 'EL Prime Properties': 431,
-                'Wellcube.life': 395, 'Mubarak Al Beshara Real Estate Development': 420, 'Source of Fate': 434, 'Dar Alkarama': 43,
-                'Palma Holding': 340, 'Shurooq Development': 435, 'Vakson Real Estate': 358, 'Tasmeer Indigo Properties': 352,
-                'AB Developers': 367, 'Alzarooni Development': 444, 'Amaal': 498, 'Wahat Al Zaweya': 397, 'Galaxy': 379,
-                'MS Homes': 376, 'MAK Developers': 415, 'City View Developments': 391, 'Reef Luxury Development': 424,
-                'Blanco Thornton Properties': 402, 'ADE Properties': 446, 'IRTH': 372, 'Forum Real Estate': 387,
-                'Nine Yards Development': 494, 'One Yard': 200, 'AAA Development': 441, 'Nine Development': 411,
-                'vision developments': 390, 'Alef Group': 273, 'Svarn': 368, 'Valores': 480, 'Crystal Bay Development': 377,
+            "Burtville Developments": 330, "Sobha": 3, "Tiger Properties": 103, "Azizi": 37, "Meraas": 70,
+            "Dubai Properties": 258, "Confident Group": 308, "Iman Developers": 61, "EMAAR": 2, "Shapoorji Pallonji": 91,
+            "Arada Properties": 35, "Ellington Properties": 50, "Select Group": 85, "Nshama": 76, "Arenco Real Estate": 398,
+            "Rijas Aces Property": 233, "Wasl": 109, "London Gate": 264, "Nakheel": 74, "GFH": 60,
+            "Expo City": 54, "AYS Developments": 36, "Imtiaz": 87, "Park Group": 366, "Prestige One": 80,
+            "Almazaya Holding": 68, "Samana Developers": 83, "Aldar": 32, "Bloom Holding": 270, "AG Properties": 317,
+            "Swank Development": 393, "Binghatti": 38, "Divine One Group": 311, "Emirates properties": 267,
+            "Dubai South": 323, "Pearlshire Developments": 329, "Gulf Land": 239, "Radiant": 269, "Modon Properties": 394,
+            "Oro24": 241, "Alzorah Development": 383, "Algouta Properties": 380, "Naseeb Group": 265, "GJ Properties": 326,
+            "Amwaj Development": 348, "Grid properties": 296, "Aqua Properties": 34, "SRG Holding": 95,
+            "Roya Lifestyle Developments": 338, "Omniyat": 77, "Aqasa Developers": 333, "Zimaya Properties": 392,
+            "Amali Properties": 341, "Credo": 324, "AAF Development": 409, "Dalands Developer": 427,
+            "The Heart of Europe": 101, "HRE Development": 399, "Lootah": 65, "AJ Gargash Real Estate": 465, "Damac": 318,
+            "Townx Real Estate": 105, "Symbolic": 97, "Nabni developments": 294, "Deyaar": 45, "Citi Developers": 283,
+            "Mashriq Elite": 332, "IFA Hotels & Resorts": 486, "Q Properties": 408, "ARAS Real Estate": 293,
+            "East & West Properties": 49, "H&H": 315, "Laya": 238, "Leos": 240, "Reportage": 232, "Empire Development": 52,
+            "Object 1": 237, "KASCO Development": 433, "Esnad Management": 421, "Majid Al Futtaim Group": 111,
+            "Signature D T": 203, "Sol Properties": 94, "Luxe Developer": 327, "Dugasta": 276, "Avelon Developments": 287,
+            "Rokane": 417, "LMD Real Estate": 227, "Source of Fate": 434, "Vision developments": 390,
+            "Peace Homes Development": 250, "JRP Development": 410, "MAG": 242, "Riviera Group": 298, "Durar": 320,
+            "Meraki Developers": 71, "Uniestate Properties": 107, "Eagle Hills": 299, "IRTH": 372,
+            "Amaya Properties LLC": 413, "Ajmal Makan": 260, "Siroya Ventures Realty L.L.C": 445, "HMB": 247,
+            "Enso Development": 403, "Marquis Point": 274, "Meteora": 278, "Vincitore": 108, "Taraf": 100,
+            "ADE Properties": 446, "Baccarat": 370, "Condor Group": 41, "Rabdan": 289, "Pure Gold": 256,
+            "Saas Properties": 300, "Dubai Invesment": 254, "Swiss Properties": 96, "Beyond": 443, "Green Group": 346,
+            "Mubadala": 468, "Main Realty": 334, "Danube Properties": 42, "Ambs Real Estate": 360, "MeDoRe": 255,
+            "Heilbronn Properties": 339, "Maaia Developments": 517, "Ginco Properties": 374, "Qube Development": 354,
+            "Orange": 303, "Alseeb Real Estate Development": 442, "Peak Summit Real Estate Development": 350,
+            "Regent Developers": 501, "Mr. Eight Development": 430, "BnW Developments": 382, "Tuscany Real Estate Development": 396,
+            "RAK Properties": 245, "Siadah International Real Estate": 406, "One Development": 425, "AHS Properties": 319,
+            "ARIB Developments": 389, "Segrex": 284, "DIFC": 502, "DarGlobal": 44, "Fortune 5": 58,
+            "Green Yard Properties": 412, "Ahmadyar Developments": 375, "Sankari Properties": 310, "Alta Real Estate Development": 491,
+            "Sama Ezdan": 205, "Stamn Development": 440, "Kamdar developments": 470, "BT Properties": 507, "IGO": 259,
+            "Orra Real Estate": 204, "Five Holdings": 56, "Karma": 62, "Almarwan Developments": 458,
+            "Khamas Group Of Investment Co's": 363, "Imkan": 371, "LAPIS Properties": 419, "Liv Developers": 64,
+            "S&S Real Estate": 499, "Fakhruddin Properties": 55, "Saba Property Developers": 416, "Majid Developments": 401,
+            "HVM Living": 484, "Golden Wood": 407, "EL Prime Properties": 431, "Wellcube.life": 395,
+            "Mubarak Al Beshara Real Estate Development": 420, "Dar Alkarama": 43, "Palma Holding": 340,
+            "Vantage Properties": 469, "Shurooq Development": 435, "Vakson Real Estate": 358, "Tasmeer Indigo Properties": 352,
+            "Acube Developments": 309, "Mada'in": 154, "Anax Developments": 301, "API": 455, "Alhamra": 351,
+            "AB Developers": 367, "Tarrad Real Estate": 451, "Esnaad": 302, "4 Direction Developers": 508,
+            "Alzarooni Development": 444, "Alma Developments": 500, "Reef Luxury Development": 424,
+            "Blanco Thornton Properties": 402, "Amaal": 498, "Wahat Al Zaweya": 397, "Alef Group": 273,
+            "One Yard": 200, "AAA Development": 441, "Ohana Developments": 369, "Forum Real Estate": 387,
+            "Nine Development": 411, "Nine Yards Development": 494, "Mira Developments": 282, "MAK Developers": 415,
+            "MS Homes": 376, "Crystal Bay Development": 377, "Galaxy": 379, "Advanced Properties": 268,
+            "City View Developments": 391, "Svarn": 368, "Centurion Developers": 464, "Union Properties": 364,
+            "Wellington Developments": 497, "Seven Mayfair Real Estate": 515, "DV8 Developers": 423, "Zenith Group": 513,
+            "AlMadar Investment L.L.C": 428, "Abou Eid Real Estate": 252, "Asak Real Estate": 485,
+            "Alhabtoor Group": 28, "Mill Hill Developer": 488, "Alaia Developments": 505, "True Future Development": 495,
+            "ARTE Development": 432, "Time Properties": 104, "GFS Builders & Developers": 471, "Zoya Developments": 386,
+            "Evera Real Estate Development": 467, "77 Shades of Green": 448, "BNH Real Estate Developer": 429,
+            "Oksa Developer": 475, "Alhelal Al zahaby": 452, "Kingdom Properties": 456, "Aark Developers": 26,
+            "Januss Developers": 447, "Grovy Real Estate": 210, "Range Developments": 479, "Matrix developments": 483,
+            "Shoumous": 261, "Lucky Aeon": 66, "Meydan": 422, "Pantheon Development": 78, "DMCC": 388,
+            "Arista Properties": 321, "DHG Properties": 295, "World Of Wonders": 291, "PMR Property": 450,
+            "Major Development’s": 292, "Takmeel Real Estate": 314, "Urban Properties": 385, "Emerald Palace Group": 51,
+            "Metac Properties L.L.C": 23, "Skyline Builders": 285, "Prescott": 357, "Vantage Ventures": 490,
+            "Zane Development": 481, "Yas Developers": 463, "Amirah Developments": 482, "Elysian Properties": 454,
+            "Nexus Developer": 449, "Hayaat Developments": 512, "Lincoln Star Real Estate": 466, "Arsenal East": 473,
+            "Laraix Developers": 511, "Aqaar": 305, "Baraka Development": 304, "Keymavens development": 345,
+            "The 100": 359, "Manam Real Estate Development": 438, "Almarina Holding": 474, "Dia Properties": 518,
+            "Iraz Developments": 335, "Seven Tides": 89, "Albait Alduwaliy Real Estate": 355,
+            "Palladium Development": 356, "Tabeer Developments": 98, "Lacasa Living": 477, "Wow Resorts": 405,
+            "Revolution": 342, "ABA Group": 336, "Cirrera Development": 516, "SOHO Development": 344,
+            "Signature Developers": 426, "Pinnacle Developers": 437, "BAMX Development": 519, "Mered": 288,
+            "AiZN Development": 404, "Octa Properties": 277, "Premier Choice": 520
         }
 
         if isinstance(developer_list, list):  # بررسی اینکه ورودی یک لیست باشد
@@ -1902,7 +2058,7 @@ def find_price(district=None, bedrooms=None, apartment_typ=None, max_area= None,
     filters["sales_status"] = [1]
 
     print(filters)
-    logging.info(f"filter find price: {filters}")
+    # logging.info(f"filter find price: {filters}")
     # اضافه کردن فیلتر برای قیمت
     properties = filter_properties(filters)
 
@@ -1969,15 +2125,25 @@ def find_price(district=None, bedrooms=None, apartment_typ=None, max_area= None,
 
 
 
+def clear_filter_memory(memory_state):
+    filter_keys = [
+        "bedrooms", "min_price", "max_price", "district", "city", "property_type",
+        "apartmentType", "payment_plan", "post_delivery", "developer_company",
+        "delivery_date", "guarantee_rental_guarantee", "facilities_name",
+        "sales_status", "min_area", "max_area", "new_search", "search_ready", "questions_needed"
+    ]
+    for key in filter_keys:
+        memory_state.pop(key, None)  # پاک کن اگه هست
+
+just_answered_questions = True
 
 async def real_estate_chatbot(user_message: str) -> str:
     """ بررسی نوع پیام و ارائه پاسخ مناسب با تشخیص هوشمند """
 
-
     print(f"📌  user message : {user_message}")
-    logging.info(f"user_message: {user_message}")
+    # logging.info(f"user_message: {user_message}")
 
-    global last_properties_list, current_property_index, memory_state, developer_mapping, facilities_mapping
+    global last_properties_list, current_property_index, memory_state, developer_mapping, facilities_mapping, just_answered_questions
 
     # ✅ **۱. تشخیص اینکه پیام فقط یک سلام است یا سوالی در مورد ملک**
     greetings = ["سلام", "سلام خوبی؟", "سلام چطوری؟", "سلام وقت بخیر", "سلام روزت بخیر"]
@@ -2224,7 +2390,7 @@ async def real_estate_chatbot(user_message: str) -> str:
 # ✅ استخراج پاسخ هوش مصنوعی
     response_content = ai_response.choices[0].message.content.strip()
     print(f"🔍 پاسخ OpenAI: {response_content}")
-    logging.info(f"message type: {response_content}")
+    # logging.info(f"message type: {response_content}")
 
     try:
         if response_content.startswith("```json"):
@@ -2246,11 +2412,74 @@ async def real_estate_chatbot(user_message: str) -> str:
     print(f"🔹 نوع درخواست: {response_type}, جزئیات درخواستی: {detail_requested}, ریست: {reset_requested}")
     # type_search = response_type
     memory_state["previous_type"] = response_type
+    # آپدیتش کن
+    types["previous_type"] = types.get("current_type")
+    types["current_type"] = response_type
 
-    if reset_requested:
-        print("🔄 کاربر درخواست ریست داده است. پاک‌سازی حافظه...")
-        memory_state.clear()  # 🚀 حافظه را ریست کن
-        return "✅ اطلاعات قبلی حذف شد. لطفاً بگویید که دنبال چه ملکی هستید. 😊"
+    #---------------------------
+    message_type = response_type  # از پاسخ مدل استخراج شده
+    print("message_type:", message_type)
+
+    # ✅ حالت‌هایی که نیازمند بررسی ادامه یا ریست هستند
+    sensitive_types = ["search", "availability_check", "district_search", "property_price"]
+    important_keys = [
+        "bedrooms", "min_price", "max_price", "district", "city", "property_type",
+        "apartmentType", "payment_plan", "post_delivery", "developer_company",
+        "delivery_date", "guarantee_rental_guarantee", "facilities_name",
+        "sales_status", "min_area", "max_area"
+    ]
+
+    if memory_state.get("pending_message"):
+        if reset_requested:
+            message_type = types["previous_type"]
+
+    # ✅ بررسی پاسخ کاربر برای ریست یا ادامه
+    if memory_state.get("pending_message"):
+        if message_type in sensitive_types:
+            if reset_requested:
+                print("🔄 کاربر درخواست ریست داده است. پاک‌سازی حافظه و ادامه...")
+                clear_filter_memory(memory_state)
+                response_type = types["previous_type"]
+                user_message = memory_state["pending_message"]
+            
+
+            # elif "ادامه بده" in user_message:
+            elif any(phrase in user_message.strip().lower() for phrase in ["ادامه بده", "ادامه", "با همین ادامه بده"]):
+                print("ادامه")
+
+
+    has_active_filters = any(memory_state.get(k) is not None for k in important_keys)
+    print("active_filer:", has_active_filters)
+    print("current_message", user_message)
+
+    # if user_message.strip() in ["ادامه بده", "ادامه", "با همین ادامه بده"] and memory_state.get("pending_message_for_reset"):
+    if any(phrase in user_message for phrase in ["ادامه بده", "ادامه", "با همین ادامه بده"]) and memory_state.get("pending_message"):
+        user_message = memory_state["pending_message"]
+        print("edame")
+        print("memory_edame", memory_state)
+
+
+    #----------------------------------------- memory newest logic   
+    print("message_type_ghable_soal", message_type)
+    print("has_active_filters", has_active_filters)
+    print("just_answered_questions", just_answered_questions)
+    # ✅ اگر یکی از این حالت‌ها بود و هیچ سوالی باقی نیست، بررسی ادامه یا ریست
+    if message_type in sensitive_types and has_active_filters and not just_answered_questions:
+        if not memory_state.get("pending_message"):
+            memory_state["pending_message"] = user_message  # ذخیره پیام فعلی
+            print("memory_soal", memory_state)
+            return "<p>❓ آیا می‌خواهید با همین فیلترها ادامه بدهیم یا از اول جستجو کنیم؟ (عبارت <b>ادامه بده</b> یا <b>ریست کن</b> را وارد کنید)</p>"
+
+
+    print("memory_ghable_reset", memory_state)
+
+    if not memory_state.get("pending_message"):
+        if reset_requested:
+            print("🔄 کاربر درخواست ریست داده است. پاک‌سازی حافظه...")
+            clear_filter_memory(memory_state)
+            # memory_state.clear()  # 🚀 حافظه را ریست کن
+            return "✅ فیلترهای قبلی حذف شدند. لطفاً جستجوی جدیدی را شروع کنید. 😊"
+
 
 
     if "market" in response_type.lower():
@@ -2285,6 +2514,13 @@ async def real_estate_chatbot(user_message: str) -> str:
     
     if "district_search" in response_type.lower():
         extracted_data = extract_filters(user_message, memory_state)
+
+        if extracted_data.get("questions_needed"):
+            memory_state["asked_questions"] = extracted_data["questions_needed"] 
+        just_answered_questions = memory_state.get("asked_questions") and not extracted_data.get("questions_needed")
+        if just_answered_questions:
+            memory_state.pop("asked_questions", None)
+
         memory_state.update(extracted_data)
         max_price = extracted_data.get("max_price")
         min_price = extracted_data.get("min_price")
@@ -2332,6 +2568,13 @@ async def real_estate_chatbot(user_message: str) -> str:
             payment_question = "پرداخت قبل از تحویل باشد یا بعد از تحویل؟"
             if extracted_data["post_delivery"] == "question":
                 return f"❓ {payment_question}"
+            
+
+        if extracted_data.get("questions_needed"):
+            memory_state["asked_questions"] = extracted_data["questions_needed"] 
+        just_answered_questions = memory_state.get("asked_questions") and not extracted_data.get("questions_needed")
+        if just_answered_questions:
+            memory_state.pop("asked_questions", None)
 
         
         # بررسی مقدار `extracted_data`
@@ -2570,52 +2813,73 @@ async def real_estate_chatbot(user_message: str) -> str:
                 developer_list = [developer_list]  # تبدیل رشته به لیست تک‌عضوی
 
             developer_mapping = {
-                'Burtville Developments': 330, 'Ellington Properties': 50, 'Sobha': 3, 'Tiger Properties': 103,
-                'Azizi': 37, 'GJ Properties': 326, 'Green Group': 346, 'Meraas': 70, 'Dubai Properties': 258,
-                'Confident Group': 308, 'Iman Developers': 61, 'EMAAR': 2, 'Damac': 318, 'Shapoorji Pallonji': 91,
-                'Arada Properties': 35, 'Omniyat': 77, 'Oro24': 241, 'Prestige One': 80, 'Deyaar': 45, 'Select Group': 85,
-                'Nshama': 76, 'Marquis Point': 274, 'Arenco Real Estate': 398, 'Rijas Aces Property': 233, 'Eagle Hills': 299,
-                'Wasl': 109, 'London Gate': 264, 'Nakheel': 74, 'Reportage': 232, 'GFH': 60, 'Expo City': 54, 'AYS Developments': 36,
-                'Imtiaz': 87, 'Park Group': 366, 'Almazaya Holding': 68, 'Samana Developers': 83, 'Aldar': 32, 'Bloom Holding': 270,
-                'AG Properties': 317, 'Swank Development': 393, 'Binghatti': 38, 'Divine One Group': 311, 'Emirates properties': 267,
-                'Dubai South': 323, 'Pearlshire Developments': 329, 'Gulf Land': 239, 'Radiant': 269, 'Modon Properties': 394,
-                'Alzorah Development': 383, 'Algouta Properties': 380, 'Majid Al Futtaim Group': 111, 'HMB': 247, 'Naseeb Group': 265,
-                'Amwaj Development': 348, 'Condor Group': 41, 'Grid properties': 296, 'Enso Development': 403, 'Aqua Properties': 34,
-                'SRG Holding': 95, 'Dugasta': 276, 'Roya Lifestyle Developments': 338, 'Meteora': 278, 'Aqasa Developers': 333,
-                'Zimaya Properties': 392, 'Citi Developers': 283, 'Amali Properties': 341, 'Dubai Invesment': 254, 'Credo': 324,
-                'AAF Development': 409, 'Saas Properties': 300, 'Object 1': 237, 'Meraki Developers': 71, 'Dalands Developer': 427,
-                'Taraf': 100, 'The Heart of Europe': 101, 'HRE Development': 399, 'Lootah': 65, 'AJ Gargash Real Estate': 465,
-                'Sol Properties': 94, 'Townx Real Estate': 105, 'Ajmal Makan': 260, 'Symbolic': 97, 'Mashriq Elite': 332,
-                'Nabni developments': 294, 'Danube Properties': 42, 'IFA Hotels & Resorts': 486, 'Q Properties': 408,
-                'ARAS Real Estate': 293, 'East & West Properties': 49, 'Amaya Properties LLC': 413, 'H&H': 315, 'Laya': 238,
-                'Leos': 240, 'Pure Gold': 256, 'Empire Development': 52, 'KASCO Development': 433, 'Swiss Properties': 96,
-                'Beyond': 443, 'Rabdan': 289, 'Esnad Management': 421, 'Durar': 320, 'Signature D T': 203, 'ABA Group': 336,
-                'Luxe Developer': 327, 'Vincitore': 108, 'Uniestate Properties': 107, 'Avelon Developments': 287, 'Rokane': 417,
-                'Orange': 303, 'Iraz Developments': 335, 'Aqaar': 305, 'Keymavens development': 345, 'Peak Summit Real Estate Development': 350,
-                'Baraka Development': 304, 'LMD Real Estate': 227, 'Arista Properties': 321, 'Ginco Properties': 374,
-                'Lacasa Living': 477, 'Wow Resorts': 405, 'Aark Developers': 26, 'Pantheon Development': 78, 'DV8 Developers': 423,
-                "Mada'in": 154, 'Mubadala': 468, 'Lucky Aeon': 66, 'Meydan': 422, 'Anax Developments': 301, 'Shoumous': 261,
-                'Five Holdings': 56, 'Acube Developments': 309, 'World Of Wonders': 291, 'Palladium Development': 356,
-                'Skyline Builders': 285, "Khamas Group Of Investment Co's": 363, 'Baccarat': 370, 'Metac Properties L.L.C': 23,
-                'Riviera Group': 298, 'MAG': 242, 'Kingdom Properties': 456, 'MeDoRe': 255, 'Revolution': 342, 'BNH Real Estate Developer': 429,
-                'Esnaad': 302, 'Takmeel Real Estate': 314, 'Mered': 288, 'Emerald Palace Group': 51, 'RAK Properties': 245,
-                'Fortune 5': 58, 'Siadah International Real Estate': 406, 'Peace Homes Development': 250, 'BnW Developments': 382,
-                'Tuscany Real Estate Development': 396, 'One Development': 425, 'AHS Properties': 319, 'ARIB Developments': 389,
-                'Alseeb Real Estate Development': 442, 'Tarrad Real Estate': 451, 'Stamn Development': 440, 'Vantage Properties': 469,
-                'Range Developments': 479, 'Zane Development': 481, 'Alta Real Estate Development': 491, 'Qube Development': 354,
-                'Green Yard Properties': 412, 'MGS Development': 353, 'Mira Developments': 282, 'True Future Development': 495,
-                'Sama Ezdan': 205, 'AiZN Development': 404, 'Wellington Developments': 497, 'Ohana Developments': 369,
-                'Heilbronn Properties': 339, 'Seven Tides': 89, 'Kamdar developments': 470, 'IGO': 259, 'Ahmadyar Developments': 375,
-                'Karma': 62, 'Imkan': 371, 'LAPIS Properties': 419, 'S&S Real Estate': 499, 'Fakhruddin Properties': 55,
-                'Saba Property Developers': 416, 'Majid Developments': 401, 'JRP Development': 410, 'DarGlobal': 44,
-                'HVM Living': 484, 'Segrex': 284, 'Mr. Eight Development': 430, 'Golden Wood': 407, 'EL Prime Properties': 431,
-                'Wellcube.life': 395, 'Mubarak Al Beshara Real Estate Development': 420, 'Source of Fate': 434, 'Dar Alkarama': 43,
-                'Palma Holding': 340, 'Shurooq Development': 435, 'Vakson Real Estate': 358, 'Tasmeer Indigo Properties': 352,
-                'AB Developers': 367, 'Alzarooni Development': 444, 'Amaal': 498, 'Wahat Al Zaweya': 397, 'Galaxy': 379,
-                'MS Homes': 376, 'MAK Developers': 415, 'City View Developments': 391, 'Reef Luxury Development': 424,
-                'Blanco Thornton Properties': 402, 'ADE Properties': 446, 'IRTH': 372, 'Forum Real Estate': 387,
-                'Nine Yards Development': 494, 'One Yard': 200, 'AAA Development': 441, 'Nine Development': 411,
-                'vision developments': 390, 'Alef Group': 273, 'Svarn': 368, 'Valores': 480, 'Crystal Bay Development': 377,
+                "Burtville Developments": 330, "Sobha": 3, "Tiger Properties": 103, "Azizi": 37, "Meraas": 70,
+                "Dubai Properties": 258, "Confident Group": 308, "Iman Developers": 61, "EMAAR": 2, "Shapoorji Pallonji": 91,
+                "Arada Properties": 35, "Ellington Properties": 50, "Select Group": 85, "Nshama": 76, "Arenco Real Estate": 398,
+                "Rijas Aces Property": 233, "Wasl": 109, "London Gate": 264, "Nakheel": 74, "GFH": 60,
+                "Expo City": 54, "AYS Developments": 36, "Imtiaz": 87, "Park Group": 366, "Prestige One": 80,
+                "Almazaya Holding": 68, "Samana Developers": 83, "Aldar": 32, "Bloom Holding": 270, "AG Properties": 317,
+                "Swank Development": 393, "Binghatti": 38, "Divine One Group": 311, "Emirates properties": 267,
+                "Dubai South": 323, "Pearlshire Developments": 329, "Gulf Land": 239, "Radiant": 269, "Modon Properties": 394,
+                "Oro24": 241, "Alzorah Development": 383, "Algouta Properties": 380, "Naseeb Group": 265, "GJ Properties": 326,
+                "Amwaj Development": 348, "Grid properties": 296, "Aqua Properties": 34, "SRG Holding": 95,
+                "Roya Lifestyle Developments": 338, "Omniyat": 77, "Aqasa Developers": 333, "Zimaya Properties": 392,
+                "Amali Properties": 341, "Credo": 324, "AAF Development": 409, "Dalands Developer": 427,
+                "The Heart of Europe": 101, "HRE Development": 399, "Lootah": 65, "AJ Gargash Real Estate": 465, "Damac": 318,
+                "Townx Real Estate": 105, "Symbolic": 97, "Nabni developments": 294, "Deyaar": 45, "Citi Developers": 283,
+                "Mashriq Elite": 332, "IFA Hotels & Resorts": 486, "Q Properties": 408, "ARAS Real Estate": 293,
+                "East & West Properties": 49, "H&H": 315, "Laya": 238, "Leos": 240, "Reportage": 232, "Empire Development": 52,
+                "Object 1": 237, "KASCO Development": 433, "Esnad Management": 421, "Majid Al Futtaim Group": 111,
+                "Signature D T": 203, "Sol Properties": 94, "Luxe Developer": 327, "Dugasta": 276, "Avelon Developments": 287,
+                "Rokane": 417, "LMD Real Estate": 227, "Source of Fate": 434, "Vision developments": 390,
+                "Peace Homes Development": 250, "JRP Development": 410, "MAG": 242, "Riviera Group": 298, "Durar": 320,
+                "Meraki Developers": 71, "Uniestate Properties": 107, "Eagle Hills": 299, "IRTH": 372,
+                "Amaya Properties LLC": 413, "Ajmal Makan": 260, "Siroya Ventures Realty L.L.C": 445, "HMB": 247,
+                "Enso Development": 403, "Marquis Point": 274, "Meteora": 278, "Vincitore": 108, "Taraf": 100,
+                "ADE Properties": 446, "Baccarat": 370, "Condor Group": 41, "Rabdan": 289, "Pure Gold": 256,
+                "Saas Properties": 300, "Dubai Invesment": 254, "Swiss Properties": 96, "Beyond": 443, "Green Group": 346,
+                "Mubadala": 468, "Main Realty": 334, "Danube Properties": 42, "Ambs Real Estate": 360, "MeDoRe": 255,
+                "Heilbronn Properties": 339, "Maaia Developments": 517, "Ginco Properties": 374, "Qube Development": 354,
+                "Orange": 303, "Alseeb Real Estate Development": 442, "Peak Summit Real Estate Development": 350,
+                "Regent Developers": 501, "Mr. Eight Development": 430, "BnW Developments": 382, "Tuscany Real Estate Development": 396,
+                "RAK Properties": 245, "Siadah International Real Estate": 406, "One Development": 425, "AHS Properties": 319,
+                "ARIB Developments": 389, "Segrex": 284, "DIFC": 502, "DarGlobal": 44, "Fortune 5": 58,
+                "Green Yard Properties": 412, "Ahmadyar Developments": 375, "Sankari Properties": 310, "Alta Real Estate Development": 491,
+                "Sama Ezdan": 205, "Stamn Development": 440, "Kamdar developments": 470, "BT Properties": 507, "IGO": 259,
+                "Orra Real Estate": 204, "Five Holdings": 56, "Karma": 62, "Almarwan Developments": 458,
+                "Khamas Group Of Investment Co's": 363, "Imkan": 371, "LAPIS Properties": 419, "Liv Developers": 64,
+                "S&S Real Estate": 499, "Fakhruddin Properties": 55, "Saba Property Developers": 416, "Majid Developments": 401,
+                "HVM Living": 484, "Golden Wood": 407, "EL Prime Properties": 431, "Wellcube.life": 395,
+                "Mubarak Al Beshara Real Estate Development": 420, "Dar Alkarama": 43, "Palma Holding": 340,
+                "Vantage Properties": 469, "Shurooq Development": 435, "Vakson Real Estate": 358, "Tasmeer Indigo Properties": 352,
+                "Acube Developments": 309, "Mada'in": 154, "Anax Developments": 301, "API": 455, "Alhamra": 351,
+                "AB Developers": 367, "Tarrad Real Estate": 451, "Esnaad": 302, "4 Direction Developers": 508,
+                "Alzarooni Development": 444, "Alma Developments": 500, "Reef Luxury Development": 424,
+                "Blanco Thornton Properties": 402, "Amaal": 498, "Wahat Al Zaweya": 397, "Alef Group": 273,
+                "One Yard": 200, "AAA Development": 441, "Ohana Developments": 369, "Forum Real Estate": 387,
+                "Nine Development": 411, "Nine Yards Development": 494, "Mira Developments": 282, "MAK Developers": 415,
+                "MS Homes": 376, "Crystal Bay Development": 377, "Galaxy": 379, "Advanced Properties": 268,
+                "City View Developments": 391, "Svarn": 368, "Centurion Developers": 464, "Union Properties": 364,
+                "Wellington Developments": 497, "Seven Mayfair Real Estate": 515, "DV8 Developers": 423, "Zenith Group": 513,
+                "AlMadar Investment L.L.C": 428, "Abou Eid Real Estate": 252, "Asak Real Estate": 485,
+                "Alhabtoor Group": 28, "Mill Hill Developer": 488, "Alaia Developments": 505, "True Future Development": 495,
+                "ARTE Development": 432, "Time Properties": 104, "GFS Builders & Developers": 471, "Zoya Developments": 386,
+                "Evera Real Estate Development": 467, "77 Shades of Green": 448, "BNH Real Estate Developer": 429,
+                "Oksa Developer": 475, "Alhelal Al zahaby": 452, "Kingdom Properties": 456, "Aark Developers": 26,
+                "Januss Developers": 447, "Grovy Real Estate": 210, "Range Developments": 479, "Matrix developments": 483,
+                "Shoumous": 261, "Lucky Aeon": 66, "Meydan": 422, "Pantheon Development": 78, "DMCC": 388,
+                "Arista Properties": 321, "DHG Properties": 295, "World Of Wonders": 291, "PMR Property": 450,
+                "Major Development’s": 292, "Takmeel Real Estate": 314, "Urban Properties": 385, "Emerald Palace Group": 51,
+                "Metac Properties L.L.C": 23, "Skyline Builders": 285, "Prescott": 357, "Vantage Ventures": 490,
+                "Zane Development": 481, "Yas Developers": 463, "Amirah Developments": 482, "Elysian Properties": 454,
+                "Nexus Developer": 449, "Hayaat Developments": 512, "Lincoln Star Real Estate": 466, "Arsenal East": 473,
+                "Laraix Developers": 511, "Aqaar": 305, "Baraka Development": 304, "Keymavens development": 345,
+                "The 100": 359, "Manam Real Estate Development": 438, "Almarina Holding": 474, "Dia Properties": 518,
+                "Iraz Developments": 335, "Seven Tides": 89, "Albait Alduwaliy Real Estate": 355,
+                "Palladium Development": 356, "Tabeer Developments": 98, "Lacasa Living": 477, "Wow Resorts": 405,
+                "Revolution": 342, "ABA Group": 336, "Cirrera Development": 516, "SOHO Development": 344,
+                "Signature Developers": 426, "Pinnacle Developers": 437, "BAMX Development": 519, "Mered": 288,
+                "AiZN Development": 404, "Octa Properties": 277, "Premier Choice": 520
             }
 
             if isinstance(developer_list, list):  # بررسی اینکه ورودی یک لیست باشد
@@ -2761,7 +3025,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         # filters["apartments"] = [12]
 
         print("🔹 فیلترهای اصلاح‌شده و ارسال‌شده به API:", filters)
-        logging.info(f"extracted filters: {filters}")
+        # logging.info(f"extracted filters: {filters}")
 
         memory_state = filters.copy()
 
@@ -2830,10 +3094,11 @@ async def real_estate_chatbot(user_message: str) -> str:
 
 
         print("🔹 memory:", memory_state)
-        logging.info(f"memory: {memory_state}")
+        # logging.info(f"memory: {memory_state}")
 
 
         print(f"🔹 تعداد املاک نهایی دریافت‌شده از API: {len(properties)}")
+        properties = sort_properties_by_developer_popularity(properties)
 
         # if len(properties) > 0:
         #     message = f"🔎 بله، {len(properties)} مورد با این مشخصات پیدا شد که الان جندتاشو معرفی میکنم."
@@ -2880,6 +3145,13 @@ async def real_estate_chatbot(user_message: str) -> str:
     
     if "property_price" in response_type.lower():
         extracted_data = extract_filters(user_message, memory_state)
+
+        if extracted_data.get("questions_needed"):
+            memory_state["asked_questions"] = extracted_data["questions_needed"] 
+        just_answered_questions = memory_state.get("asked_questions") and not extracted_data.get("questions_needed")
+        if just_answered_questions:
+            memory_state.pop("asked_questions", None)
+
         district = extracted_data.get("district")
         apartment_typ = extracted_data.get("apartmentType")
         bedrooms = extracted_data.get("bedrooms")
@@ -2908,8 +3180,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         )
 
 
-    
-    # ✅ **۵. اگر درخواست جستجوی ملک است، فیلترها را استخراج کرده و ملک پیشنهاد بده**
+
     if "search" in response_type.lower():
         print("✅ تابع extract_filters در حال اجرا است...")
         print("🔹 memory", memory_state)
@@ -2920,13 +3191,13 @@ async def real_estate_chatbot(user_message: str) -> str:
         if "questions_needed" in extracted_data and len(extracted_data["questions_needed"]) > 0:
             # print("❓ اطلاعات ناقص است، سوالات لازم: ", extracted_data["questions_needed"])
 
-            # 🚀 ذخیره فقط `bedrooms`, `max_price`, `district` در `memory_state`
-            essential_keys = ["bedrooms", "max_price", "post_delivery"]
-            for key in essential_keys:
-                if extracted_data.get(key) is not None and extracted_data.get(key) != "question":
-                    memory_state[key] = extracted_data[key]  # مقدار جدید را ذخیره کن
+            # # 🚀 ذخیره فقط `bedrooms`, `max_price`, `district` در `memory_state`
+            # essential_keys = ["bedrooms", "max_price", "post_delivery"]
+            # for key in essential_keys:
+            #     if extracted_data.get(key) is not None and extracted_data.get(key) != "question":
+            #         memory_state[key] = extracted_data[key]  # مقدار جدید را ذخیره کن
 
-            print("✅ اطلاعات ضروری از extracted_data در memory_state ذخیره شد:", memory_state)
+            # print("✅ اطلاعات ضروری از extracted_data در memory_state ذخیره شد:", memory_state)
 
             return "❓ " + "، ".join(extracted_data["questions_needed"])
 
@@ -2934,7 +3205,18 @@ async def real_estate_chatbot(user_message: str) -> str:
             payment_question = "پرداخت قبل از تحویل باشد یا بعد از تحویل؟"
             if extracted_data["post_delivery"] == "question":
                 return f"❓ {payment_question}"
+            
+        # previous_questions = set(memory_state.get("asked_questions", []))
+        # current_questions = set(extracted_data.get("questions_needed", []))
+        # just_answered_questions = previous_questions and not current_questions.intersection(previous_questions)
 
+        
+
+        if extracted_data.get("questions_needed"):
+            memory_state["asked_questions"] = extracted_data["questions_needed"] 
+        just_answered_questions = memory_state.get("asked_questions") and not extracted_data.get("questions_needed")
+        if just_answered_questions:
+            memory_state.pop("asked_questions", None)
         
         # بررسی مقدار `extracted_data`
         print("🔹 داده‌های استخراج‌شده از پیام کاربر:", extracted_data)
@@ -3172,52 +3454,73 @@ async def real_estate_chatbot(user_message: str) -> str:
                 developer_list = [developer_list]  # تبدیل رشته به لیست تک‌عضوی
 
             developer_mapping = {
-                'Burtville Developments': 330, 'Ellington Properties': 50, 'Sobha': 3, 'Tiger Properties': 103,
-                'Azizi': 37, 'GJ Properties': 326, 'Green Group': 346, 'Meraas': 70, 'Dubai Properties': 258,
-                'Confident Group': 308, 'Iman Developers': 61, 'EMAAR': 2, 'Damac': 318, 'Shapoorji Pallonji': 91,
-                'Arada Properties': 35, 'Omniyat': 77, 'Oro24': 241, 'Prestige One': 80, 'Deyaar': 45, 'Select Group': 85,
-                'Nshama': 76, 'Marquis Point': 274, 'Arenco Real Estate': 398, 'Rijas Aces Property': 233, 'Eagle Hills': 299,
-                'Wasl': 109, 'London Gate': 264, 'Nakheel': 74, 'Reportage': 232, 'GFH': 60, 'Expo City': 54, 'AYS Developments': 36,
-                'Imtiaz': 87, 'Park Group': 366, 'Almazaya Holding': 68, 'Samana Developers': 83, 'Aldar': 32, 'Bloom Holding': 270,
-                'AG Properties': 317, 'Swank Development': 393, 'Binghatti': 38, 'Divine One Group': 311, 'Emirates properties': 267,
-                'Dubai South': 323, 'Pearlshire Developments': 329, 'Gulf Land': 239, 'Radiant': 269, 'Modon Properties': 394,
-                'Alzorah Development': 383, 'Algouta Properties': 380, 'Majid Al Futtaim Group': 111, 'HMB': 247, 'Naseeb Group': 265,
-                'Amwaj Development': 348, 'Condor Group': 41, 'Grid properties': 296, 'Enso Development': 403, 'Aqua Properties': 34,
-                'SRG Holding': 95, 'Dugasta': 276, 'Roya Lifestyle Developments': 338, 'Meteora': 278, 'Aqasa Developers': 333,
-                'Zimaya Properties': 392, 'Citi Developers': 283, 'Amali Properties': 341, 'Dubai Invesment': 254, 'Credo': 324,
-                'AAF Development': 409, 'Saas Properties': 300, 'Object 1': 237, 'Meraki Developers': 71, 'Dalands Developer': 427,
-                'Taraf': 100, 'The Heart of Europe': 101, 'HRE Development': 399, 'Lootah': 65, 'AJ Gargash Real Estate': 465,
-                'Sol Properties': 94, 'Townx Real Estate': 105, 'Ajmal Makan': 260, 'Symbolic': 97, 'Mashriq Elite': 332,
-                'Nabni developments': 294, 'Danube Properties': 42, 'IFA Hotels & Resorts': 486, 'Q Properties': 408,
-                'ARAS Real Estate': 293, 'East & West Properties': 49, 'Amaya Properties LLC': 413, 'H&H': 315, 'Laya': 238,
-                'Leos': 240, 'Pure Gold': 256, 'Empire Development': 52, 'KASCO Development': 433, 'Swiss Properties': 96,
-                'Beyond': 443, 'Rabdan': 289, 'Esnad Management': 421, 'Durar': 320, 'Signature D T': 203, 'ABA Group': 336,
-                'Luxe Developer': 327, 'Vincitore': 108, 'Uniestate Properties': 107, 'Avelon Developments': 287, 'Rokane': 417,
-                'Orange': 303, 'Iraz Developments': 335, 'Aqaar': 305, 'Keymavens development': 345, 'Peak Summit Real Estate Development': 350,
-                'Baraka Development': 304, 'LMD Real Estate': 227, 'Arista Properties': 321, 'Ginco Properties': 374,
-                'Lacasa Living': 477, 'Wow Resorts': 405, 'Aark Developers': 26, 'Pantheon Development': 78, 'DV8 Developers': 423,
-                "Mada'in": 154, 'Mubadala': 468, 'Lucky Aeon': 66, 'Meydan': 422, 'Anax Developments': 301, 'Shoumous': 261,
-                'Five Holdings': 56, 'Acube Developments': 309, 'World Of Wonders': 291, 'Palladium Development': 356,
-                'Skyline Builders': 285, "Khamas Group Of Investment Co's": 363, 'Baccarat': 370, 'Metac Properties L.L.C': 23,
-                'Riviera Group': 298, 'MAG': 242, 'Kingdom Properties': 456, 'MeDoRe': 255, 'Revolution': 342, 'BNH Real Estate Developer': 429,
-                'Esnaad': 302, 'Takmeel Real Estate': 314, 'Mered': 288, 'Emerald Palace Group': 51, 'RAK Properties': 245,
-                'Fortune 5': 58, 'Siadah International Real Estate': 406, 'Peace Homes Development': 250, 'BnW Developments': 382,
-                'Tuscany Real Estate Development': 396, 'One Development': 425, 'AHS Properties': 319, 'ARIB Developments': 389,
-                'Alseeb Real Estate Development': 442, 'Tarrad Real Estate': 451, 'Stamn Development': 440, 'Vantage Properties': 469,
-                'Range Developments': 479, 'Zane Development': 481, 'Alta Real Estate Development': 491, 'Qube Development': 354,
-                'Green Yard Properties': 412, 'MGS Development': 353, 'Mira Developments': 282, 'True Future Development': 495,
-                'Sama Ezdan': 205, 'AiZN Development': 404, 'Wellington Developments': 497, 'Ohana Developments': 369,
-                'Heilbronn Properties': 339, 'Seven Tides': 89, 'Kamdar developments': 470, 'IGO': 259, 'Ahmadyar Developments': 375,
-                'Karma': 62, 'Imkan': 371, 'LAPIS Properties': 419, 'S&S Real Estate': 499, 'Fakhruddin Properties': 55,
-                'Saba Property Developers': 416, 'Majid Developments': 401, 'JRP Development': 410, 'DarGlobal': 44,
-                'HVM Living': 484, 'Segrex': 284, 'Mr. Eight Development': 430, 'Golden Wood': 407, 'EL Prime Properties': 431,
-                'Wellcube.life': 395, 'Mubarak Al Beshara Real Estate Development': 420, 'Source of Fate': 434, 'Dar Alkarama': 43,
-                'Palma Holding': 340, 'Shurooq Development': 435, 'Vakson Real Estate': 358, 'Tasmeer Indigo Properties': 352,
-                'AB Developers': 367, 'Alzarooni Development': 444, 'Amaal': 498, 'Wahat Al Zaweya': 397, 'Galaxy': 379,
-                'MS Homes': 376, 'MAK Developers': 415, 'City View Developments': 391, 'Reef Luxury Development': 424,
-                'Blanco Thornton Properties': 402, 'ADE Properties': 446, 'IRTH': 372, 'Forum Real Estate': 387,
-                'Nine Yards Development': 494, 'One Yard': 200, 'AAA Development': 441, 'Nine Development': 411,
-                'vision developments': 390, 'Alef Group': 273, 'Svarn': 368, 'Valores': 480, 'Crystal Bay Development': 377,
+                "Burtville Developments": 330, "Sobha": 3, "Tiger Properties": 103, "Azizi": 37, "Meraas": 70,
+                "Dubai Properties": 258, "Confident Group": 308, "Iman Developers": 61, "EMAAR": 2, "Shapoorji Pallonji": 91,
+                "Arada Properties": 35, "Ellington Properties": 50, "Select Group": 85, "Nshama": 76, "Arenco Real Estate": 398,
+                "Rijas Aces Property": 233, "Wasl": 109, "London Gate": 264, "Nakheel": 74, "GFH": 60,
+                "Expo City": 54, "AYS Developments": 36, "Imtiaz": 87, "Park Group": 366, "Prestige One": 80,
+                "Almazaya Holding": 68, "Samana Developers": 83, "Aldar": 32, "Bloom Holding": 270, "AG Properties": 317,
+                "Swank Development": 393, "Binghatti": 38, "Divine One Group": 311, "Emirates properties": 267,
+                "Dubai South": 323, "Pearlshire Developments": 329, "Gulf Land": 239, "Radiant": 269, "Modon Properties": 394,
+                "Oro24": 241, "Alzorah Development": 383, "Algouta Properties": 380, "Naseeb Group": 265, "GJ Properties": 326,
+                "Amwaj Development": 348, "Grid properties": 296, "Aqua Properties": 34, "SRG Holding": 95,
+                "Roya Lifestyle Developments": 338, "Omniyat": 77, "Aqasa Developers": 333, "Zimaya Properties": 392,
+                "Amali Properties": 341, "Credo": 324, "AAF Development": 409, "Dalands Developer": 427,
+                "The Heart of Europe": 101, "HRE Development": 399, "Lootah": 65, "AJ Gargash Real Estate": 465, "Damac": 318,
+                "Townx Real Estate": 105, "Symbolic": 97, "Nabni developments": 294, "Deyaar": 45, "Citi Developers": 283,
+                "Mashriq Elite": 332, "IFA Hotels & Resorts": 486, "Q Properties": 408, "ARAS Real Estate": 293,
+                "East & West Properties": 49, "H&H": 315, "Laya": 238, "Leos": 240, "Reportage": 232, "Empire Development": 52,
+                "Object 1": 237, "KASCO Development": 433, "Esnad Management": 421, "Majid Al Futtaim Group": 111,
+                "Signature D T": 203, "Sol Properties": 94, "Luxe Developer": 327, "Dugasta": 276, "Avelon Developments": 287,
+                "Rokane": 417, "LMD Real Estate": 227, "Source of Fate": 434, "Vision developments": 390,
+                "Peace Homes Development": 250, "JRP Development": 410, "MAG": 242, "Riviera Group": 298, "Durar": 320,
+                "Meraki Developers": 71, "Uniestate Properties": 107, "Eagle Hills": 299, "IRTH": 372,
+                "Amaya Properties LLC": 413, "Ajmal Makan": 260, "Siroya Ventures Realty L.L.C": 445, "HMB": 247,
+                "Enso Development": 403, "Marquis Point": 274, "Meteora": 278, "Vincitore": 108, "Taraf": 100,
+                "ADE Properties": 446, "Baccarat": 370, "Condor Group": 41, "Rabdan": 289, "Pure Gold": 256,
+                "Saas Properties": 300, "Dubai Invesment": 254, "Swiss Properties": 96, "Beyond": 443, "Green Group": 346,
+                "Mubadala": 468, "Main Realty": 334, "Danube Properties": 42, "Ambs Real Estate": 360, "MeDoRe": 255,
+                "Heilbronn Properties": 339, "Maaia Developments": 517, "Ginco Properties": 374, "Qube Development": 354,
+                "Orange": 303, "Alseeb Real Estate Development": 442, "Peak Summit Real Estate Development": 350,
+                "Regent Developers": 501, "Mr. Eight Development": 430, "BnW Developments": 382, "Tuscany Real Estate Development": 396,
+                "RAK Properties": 245, "Siadah International Real Estate": 406, "One Development": 425, "AHS Properties": 319,
+                "ARIB Developments": 389, "Segrex": 284, "DIFC": 502, "DarGlobal": 44, "Fortune 5": 58,
+                "Green Yard Properties": 412, "Ahmadyar Developments": 375, "Sankari Properties": 310, "Alta Real Estate Development": 491,
+                "Sama Ezdan": 205, "Stamn Development": 440, "Kamdar developments": 470, "BT Properties": 507, "IGO": 259,
+                "Orra Real Estate": 204, "Five Holdings": 56, "Karma": 62, "Almarwan Developments": 458,
+                "Khamas Group Of Investment Co's": 363, "Imkan": 371, "LAPIS Properties": 419, "Liv Developers": 64,
+                "S&S Real Estate": 499, "Fakhruddin Properties": 55, "Saba Property Developers": 416, "Majid Developments": 401,
+                "HVM Living": 484, "Golden Wood": 407, "EL Prime Properties": 431, "Wellcube.life": 395,
+                "Mubarak Al Beshara Real Estate Development": 420, "Dar Alkarama": 43, "Palma Holding": 340,
+                "Vantage Properties": 469, "Shurooq Development": 435, "Vakson Real Estate": 358, "Tasmeer Indigo Properties": 352,
+                "Acube Developments": 309, "Mada'in": 154, "Anax Developments": 301, "API": 455, "Alhamra": 351,
+                "AB Developers": 367, "Tarrad Real Estate": 451, "Esnaad": 302, "4 Direction Developers": 508,
+                "Alzarooni Development": 444, "Alma Developments": 500, "Reef Luxury Development": 424,
+                "Blanco Thornton Properties": 402, "Amaal": 498, "Wahat Al Zaweya": 397, "Alef Group": 273,
+                "One Yard": 200, "AAA Development": 441, "Ohana Developments": 369, "Forum Real Estate": 387,
+                "Nine Development": 411, "Nine Yards Development": 494, "Mira Developments": 282, "MAK Developers": 415,
+                "MS Homes": 376, "Crystal Bay Development": 377, "Galaxy": 379, "Advanced Properties": 268,
+                "City View Developments": 391, "Svarn": 368, "Centurion Developers": 464, "Union Properties": 364,
+                "Wellington Developments": 497, "Seven Mayfair Real Estate": 515, "DV8 Developers": 423, "Zenith Group": 513,
+                "AlMadar Investment L.L.C": 428, "Abou Eid Real Estate": 252, "Asak Real Estate": 485,
+                "Alhabtoor Group": 28, "Mill Hill Developer": 488, "Alaia Developments": 505, "True Future Development": 495,
+                "ARTE Development": 432, "Time Properties": 104, "GFS Builders & Developers": 471, "Zoya Developments": 386,
+                "Evera Real Estate Development": 467, "77 Shades of Green": 448, "BNH Real Estate Developer": 429,
+                "Oksa Developer": 475, "Alhelal Al zahaby": 452, "Kingdom Properties": 456, "Aark Developers": 26,
+                "Januss Developers": 447, "Grovy Real Estate": 210, "Range Developments": 479, "Matrix developments": 483,
+                "Shoumous": 261, "Lucky Aeon": 66, "Meydan": 422, "Pantheon Development": 78, "DMCC": 388,
+                "Arista Properties": 321, "DHG Properties": 295, "World Of Wonders": 291, "PMR Property": 450,
+                "Major Development’s": 292, "Takmeel Real Estate": 314, "Urban Properties": 385, "Emerald Palace Group": 51,
+                "Metac Properties L.L.C": 23, "Skyline Builders": 285, "Prescott": 357, "Vantage Ventures": 490,
+                "Zane Development": 481, "Yas Developers": 463, "Amirah Developments": 482, "Elysian Properties": 454,
+                "Nexus Developer": 449, "Hayaat Developments": 512, "Lincoln Star Real Estate": 466, "Arsenal East": 473,
+                "Laraix Developers": 511, "Aqaar": 305, "Baraka Development": 304, "Keymavens development": 345,
+                "The 100": 359, "Manam Real Estate Development": 438, "Almarina Holding": 474, "Dia Properties": 518,
+                "Iraz Developments": 335, "Seven Tides": 89, "Albait Alduwaliy Real Estate": 355,
+                "Palladium Development": 356, "Tabeer Developments": 98, "Lacasa Living": 477, "Wow Resorts": 405,
+                "Revolution": 342, "ABA Group": 336, "Cirrera Development": 516, "SOHO Development": 344,
+                "Signature Developers": 426, "Pinnacle Developers": 437, "BAMX Development": 519, "Mered": 288,
+                "AiZN Development": 404, "Octa Properties": 277, "Premier Choice": 520
             }
 
             if isinstance(developer_list, list):  # بررسی اینکه ورودی یک لیست باشد
@@ -3363,7 +3666,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         # filters["apartments"] = [12]
 
         print("🔹 فیلترهای اصلاح‌شده و ارسال‌شده به API:", filters)
-        logging.info(f"extracted filters: {filters}")
+        # logging.info(f"extracted filters: {filters}")
 
         memory_state = filters.copy()
 
@@ -3432,11 +3735,13 @@ async def real_estate_chatbot(user_message: str) -> str:
 
 
         print("🔹 memory:", memory_state)
-        logging.info(f"memory: {memory_state}")
+        # logging.info(f"memory: {memory_state}")
 
 
         print(f"🔹 تعداد املاک نهایی دریافت‌شده از API: {len(properties)}")
         # print(properties[:3])
+
+        properties = sort_properties_by_developer_popularity(properties)
 
         # response = generate_ai_summary(properties)
         response = await generate_ai_summary(properties)
