@@ -97,7 +97,7 @@ def start_scheduler():
 from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # fetch_and_cache_properties() 
+    fetch_and_cache_properties() 
     start_scheduler()
     yield
 
