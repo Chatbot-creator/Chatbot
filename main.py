@@ -3855,6 +3855,18 @@ async def chat(request: ChatRequest):
     return {"response": bot_response}
 
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://www.trunest.ae",
+        "http://localhost:3000",  # 🔥 اضافه کردن لوکال
+        "http://127.0.0.1:3000"   # در صورت نیاز
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 from fastapi.responses import FileResponse
 import os
