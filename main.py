@@ -3855,23 +3855,6 @@ async def chat(request: ChatRequest):
     return {"response": bot_response}
 
 
-# #----------------
-
-# # # CORS اجازه‌ی دسترسی از همه جا (در صورت نیاز محدود کن)
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# #----------------
-
-
-
-
-
 
 from fastapi.responses import FileResponse
 import os
