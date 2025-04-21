@@ -651,6 +651,7 @@ def extract_filters(user_message: str, previous_filters: dict):
         return {}
 
 property_name_to_id = {}
+property_ordered_list = []
 
 
 def sort_properties_by_developer_popularity(properties):
@@ -734,11 +735,13 @@ def sort_properties_by_developer_popularity(properties):
 async def generate_ai_summary(properties, start_index=0):
     """ ارائه خلاصه کوتاه از املاک پیشنهادی به صورت تدریجی """
 
-    global last_properties_list, current_property_index, selected_properties, property_name_to_id, comp_properties
+    global last_properties_list, current_property_index, selected_properties, property_name_to_id, comp_properties, property_ordered_list
     number_property = 3
 
     if not properties:
-        return "متأسفانه هیچ ملکی با این مشخصات پیدا نشد. لطفاً بازه قیمتی یا تعداد اتاق خواب را تغییر دهید یا منطقه دیگری انتخاب کنید."
+        return "متأسفانه در حال حاضر ملکی مطابق با شرایط شما یافت نشد. با تغییر برخی از شرایط، ممکن است گزینه‌های مناسب‌تری نمایش داده شود. 😊"
+    
+        # return "متأسفانه هیچ ملکی با این مشخصات پیدا نشد. لطفاً بازه قیمتی یا تعداد اتاق خواب را تغییر دهید یا منطقه دیگری انتخاب کنید."
 
     # properties = sort_properties_by_developer_popularity(properties)
 
@@ -747,7 +750,8 @@ async def generate_ai_summary(properties, start_index=0):
     comp_properties = properties
     current_property_index = start_index + number_property
     st_index = start_index + 1
-    index_n = len(property_name_to_id) + 1
+    # index_n = len(property_name_to_id) + 1
+    index_n = len(property_ordered_list) + 1
 
     selected_properties = properties[start_index:current_property_index]
 
@@ -766,10 +770,14 @@ async def generate_ai_summary(properties, start_index=0):
             prop["delivery_date"] = datetime.fromtimestamp(unix_timestamp, tz=timezone.utc).strftime('%Y-%m-%d')
 
         if prop_name and prop_id:
+            property_ordered_list.append((prop_name, prop_id))
+
             property_name_to_id[prop_name] = prop_id
 
-    print("📌 لیست املاک ذخیره‌شده پس از مقداردهی:", property_name_to_id)
-    print("📌 تعداد املاک ذخیره‌شده:", len(property_name_to_id))
+    print("📌 لیست املاک ذخیره‌شده پس از مقداردهی:", property_ordered_list)
+    print("📌 تعداد املاک ذخیره‌شده:", len(property_ordered_list))
+    print("📌 لیست املاک ذخیره‌شده در دیکشنری پس از مقداردهی:", property_name_to_id)
+    print("📌 تعداد املاک ذخیره‌شده در دیکشنری:", len(property_name_to_id))
 
     async def process_property(prop, index):
         """ پردازش و نمایش هر ملک به‌صورت جداگانه بدون انتظار برای بقیه """
@@ -869,7 +877,7 @@ def generate_ai_details(property_id, detail_type=None):
     """ ارائه اطلاعات تکمیلی یک ملک خاص یا بخشی خاص از آن """
 
 
-    global property_name_to_id, selected_properties
+    global property_name_to_id, selected_properties, property_ordered_list
     selected_property = next((p for p in selected_properties if p.get("id") == property_id), None)
     if not selected_property:
         print(f"❌ هشدار: ملکی با آی‌دی {property_id} در selected_properties پیدا نشد!")
@@ -1065,25 +1073,36 @@ async def fetch_real_estate_buying_guide(user_question):
 import json
 from fuzzywuzzy import process
 
-async def extract_property_identifier(user_message, property_name_to_id):
+async def extract_property_identifier(user_message, property_name_to_id, property_ordered_list):
     """با استفاده از هوش مصنوعی، شماره یا نام ملک را از پیام کاربر استخراج می‌کند و ID آن را برمی‌گرداند."""
 
     # ✅ چاپ دیکشنری برای دیباگ
     print(f"📌 دیکشنری property_name_to_id: {property_name_to_id}")
 
     # **نام‌های املاک برای بررسی تطابق**
+    property_names_0 = [name for name, _id in property_ordered_list]
     property_names = list(property_name_to_id.keys())
     print(f"📌 لیست نام املاک برای تشخیص: {property_names}")
 
     if not property_names:
         return None  # اگر لیست خالی باشد، مقدار None برگردان
+    
+    # ✅ پشتیبانی از واژه‌هایی مثل "آخر"، "همین آخری"، "آخرین ملک"
+    last_property_phrases = ["آخر", "آخرین", "آخری","همین آخری", "ملک آخر", "آخرین ملک", "همون آخری", "اخر", "اخرین", "اخری","همین اخری", "ملک اخر", "اخرین ملک", "همون اخری"]
+    if any(phrase in user_message for phrase in last_property_phrases):
+        # last_index = len(property_names) - 1
+        # property_name = property_names[last_index]
+        # return property_name_to_id[property_name]
+        if property_ordered_list:
+            last_prop = property_ordered_list[-1]
+            return last_prop[1]  # برگردوندن id ملک آخر از روی لیست
 
     # **پرامپت برای تشخیص شماره یا نام ملک**
     prompt = f"""
     کاربر یک مشاور املاک در دبی را خطاب قرار داده و در مورد جزئیات یک ملک سؤال می‌کند.
     
     **لیست املاک موجود:**
-    {json.dumps(property_names, ensure_ascii=False)}
+    {json.dumps(property_names_0, ensure_ascii=False)}
 
     **متن کاربر:**
     "{user_message}"
@@ -1093,6 +1112,7 @@ async def extract_property_identifier(user_message, property_name_to_id):
     - اگر id ملک نوشته شده 
     - اگر نام یکی از املاک بالا ذکر شده، فقط نام آن را در خروجی بده.
     - اگر کاربر عباراتی مانند "ملک دوم"، "ملک شماره ۲"، "دومین ملک" و... استفاده کرد، شماره ملک را به ترتیب در لیست بگیر.
+    - اگر کاربر شماره گفته همون عدد رو خروجی بده نه اسم ملک رو
 
     **خروجی فقط شامل مقدار باشد:**
     - یک عدد (مثلاً `2`)
@@ -1115,11 +1135,11 @@ async def extract_property_identifier(user_message, property_name_to_id):
     if extracted_info.isdigit():
         extracted_index = int(extracted_info) - 1  # **تبدیل شماره به ایندکس (1-based to 0-based)**
         
-        if 0 <= extracted_index < len(property_names):  # **بررسی اینکه عدد در محدوده باشد**
-            property_name = property_names[extracted_index]
-            return property_name_to_id[property_name]  # **برگرداندن `id` ملک**
+        if 0 <= extracted_index < len(property_ordered_list):  # **بررسی اینکه عدد در محدوده باشد**
+            return property_ordered_list[extracted_index][1]  # **برگرداندن `id` ملک**
         
         return None  # اگر عدد معتبر نبود، مقدار `None` برگردد
+    
 
     # ✅ بررسی اینکه آیا نام ملک در دیکشنری هست؟
     extracted_info = extracted_info.lower().strip()
@@ -1132,6 +1152,16 @@ async def extract_property_identifier(user_message, property_name_to_id):
 
     if score > 70:  # **اگر دقت بالا بود، مقدار را قبول کن**
         return property_name_to_id[best_match]
+    
+    # ✅ **استخراج نام ملک از پیام کاربر**
+    user_property_names = re.findall(r'([A-Za-z0-9\-]+(?:\s[A-Za-z0-9\-]+)*)', user_message)
+
+    found_properties = fetch_properties_from_estaty(user_property_names[:1])  # فقط اولین ملک را بررسی کن
+    if found_properties:
+        property_name, property_id = found_properties[0]  # اولین ملک را به لیست اضافه کن
+        return property_id
+    # elif not found_properties:
+    #     return "❌ متأسفم، این ملک در لیست املاک موجود پیدا نشد. لطفاً نام دقیق‌تر را وارد کنید."
 
     return None  # **اگر هیچ تطابقی پیدا نشد، `None` برگردان**
 
@@ -1291,12 +1321,21 @@ async def compare_properties(user_message: str) -> str:
 async def process_purchase_request(user_message: str) -> str:
     """ بررسی درخواست خرید ملک و ارائه اطلاعات پرداخت، اقساط و تخفیف‌ها """
 
-    global property_name_to_id
+    global property_name_to_id, property_ordered_list
+
+    mentioned_properties = []
+
+    last_property_phrases = ["آخر", "آخرین", "آخری","همین آخری", "ملک آخر", "آخرین ملک", "همون آخری", "اخر", "اخرین", "اخری","همین اخری", "ملک اخر", "اخرین ملک", "همون اخری"]
+    if any(phrase in user_message for phrase in last_property_phrases):
+        print("📌 کاربر گفته ملک آخر رو می‌خواد.")
+        if property_ordered_list:
+            last_name, last_id = property_ordered_list[-1]
+            mentioned_properties.append((last_name, last_id))
+
 
     # ✅ **استخراج نام ملک از پیام کاربر**
     user_property_names = re.findall(r'([A-Za-z0-9\-]+(?:\s[A-Za-z0-9\-]+)*)', user_message)
     
-    mentioned_properties = []
 
     # ✅ **بررسی نام ملک با Fuzzy Matching برای تشخیص غلط املایی**
     if property_name_to_id:
@@ -1311,10 +1350,54 @@ async def process_purchase_request(user_message: str) -> str:
     if not mentioned_properties:
         # print("❌ ملک در لیست قبلی یافت نشد، جستجو در Estaty API انجام می‌شود...")
         found_properties = fetch_properties_from_estaty(user_property_names[:1])  # فقط اولین ملک را بررسی کن
-        if not found_properties:
-            return "❌ متأسفم، این ملک در لیست املاک موجود پیدا نشد. لطفاً نام دقیق‌تر را وارد کنید."
+        if found_properties:
+            mentioned_properties.append(found_properties[0])  # اولین ملک را به لیست اضافه کن
+
+
+    if not mentioned_properties:
+        # **نام‌های املاک برای بررسی تطابق**
+        property_names = list(property_name_to_id.keys())
+        print(f"📌 لیست نام املاک برای تشخیص: {property_names}")
+
+        # **پرامپت برای تشخیص شماره یا نام ملک**
+        prompt = f"""
+        کاربر یک مشاور املاک در دبی را خطاب قرار داده و در مورد جزئیات یک ملک سؤال می‌کند.
         
-        mentioned_properties.append(found_properties[0])  # اولین ملک را به لیست اضافه کن
+        **لیست املاک موجود:**
+        {json.dumps(property_names, ensure_ascii=False)}
+
+        **متن کاربر:**
+        "{user_message}"
+
+        **آیا کاربر شماره یکی از املاک بالا را مشخص کرده است؟**
+        - اگر عددی چه به فارسی چه به انگلیسی ذکر شده (مثلاً ۲)، فقط همان عدد را در خروجی بده.  
+        - اگر id ملک نوشته شده 
+        - اگر کاربر عباراتی مانند "ملک دوم"، "ملک شماره ۲"، "دومین ملک" و... استفاده کرد، شماره ملک را به ترتیب در لیست بگیر.
+
+        **خروجی فقط شامل مقدار باشد:**
+        - یک عدد (مثلاً `2`)
+        """
+
+        ai_response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": prompt}],
+            max_tokens=30
+        )
+
+        extracted_info = ai_response.choices[0].message.content.strip()
+        print(f"📌 پاسخ AI برای تشخیص ملک: {extracted_info}")
+
+
+        # ✅ بررسی عددی بودن مقدار استخراج‌شده (اگر شماره ملک باشد)
+        if extracted_info.isdigit():
+            extracted_index = int(extracted_info) - 1  # **تبدیل شماره به ایندکس (1-based to 0-based)**
+            
+            if 0 <= extracted_index < len(property_ordered_list):  # **بررسی اینکه عدد در محدوده باشد**
+                property_name, property_id = property_ordered_list[extracted_index]
+                mentioned_properties.append((property_name, property_id))
+
+        if not mentioned_properties:
+            return "❌ متأسفم، این ملک در لیست املاک موجود پیدا نشد. لطفاً نام دقیق‌تر را وارد کنید."
 
 
     # ✅ دریافت اطلاعات ملک از API
@@ -1322,7 +1405,7 @@ async def process_purchase_request(user_message: str) -> str:
     property_details = fetch_single_property(property_id)
 
     if not property_details:
-        return "❌ متأسفم، نتوانستم اطلاعات این ملک را پیدا کنم."
+        return "❌ متأسفم، نتوانستم اطلاعات این پروژه را پیدا کنم."
 
     # ✅ ایجاد پرامپت برای دریافت شرایط خرید ملک
     purchase_prompt = f"""
@@ -1729,7 +1812,7 @@ def find_districts_by_budget(max_price=None, min_price=None, max_area= None, min
         print(f"📐 بعد از فیلتر بر اساس مساحت پروژه (sqft) بین {min_val * 10.7639} تا {max_val * 10.7639}: {len(properties)}")
 
     if not properties:
-        return "❌ متأسفم، هیچ منطقه‌ای متناسب با بودجه شما پیدا نشد."
+        return "❌ متأسفم، هیچ منطقه‌ای متناسب با شرایط شما پیدا نشد."
 
     # ✅ استخراج مناطق و شمارش تعداد املاک موجود در هر منطقه
     district_counts = {}
@@ -1741,7 +1824,7 @@ def find_districts_by_budget(max_price=None, min_price=None, max_area= None, min
                 district_counts[district_name] = district_counts.get(district_name, 0) + 1
 
     if not district_counts:
-        return "❌ هیچ منطقه‌ای با این بودجه پیدا نشد."
+        return "❌ هیچ منطقه‌ای با شرایط شما پیدا نشد."
 
     # ✅ مرتب‌سازی بر اساس تعداد املاک موجود
     sorted_districts = sorted(district_counts.items(), key=lambda x: x[1], reverse=True)
@@ -2557,7 +2640,7 @@ async def real_estate_chatbot(user_message: str) -> str:
     # ✅ **۳. تشخیص درخواست اطلاعات بیشتر درباره املاک قبلاً معرفی‌شده**
     if "details" in response_type.lower():
     # ✅ استخراج شماره یا نام ملک از پیام کاربر
-        property_id = await extract_property_identifier(user_message, property_name_to_id)
+        property_id = await extract_property_identifier(user_message, property_name_to_id, property_ordered_list)
         print(f"📌 مقدار property_identifier استخراج‌شده: {property_id}")
 
         global last_property_id
@@ -2566,7 +2649,7 @@ async def real_estate_chatbot(user_message: str) -> str:
                 property_id = last_property_id  # استفاده از ملک قبلی
                 print(f"ℹ️ استفاده از آخرین ملک پرسیده‌شده: {property_id}")
             else:
-                return "❌ لطفاً شماره یا نام ملک را مشخص کنید."
+                return "❌ لطفاً نام پروژه را مشخص کنید."
 
         # ✅ ذخیره این ملک به عنوان آخرین ملکی که درباره‌اش سوال شده است
         last_property_id = property_id
@@ -2628,6 +2711,13 @@ async def real_estate_chatbot(user_message: str) -> str:
     if "buying_guide" in response_type.lower():
         return await fetch_real_estate_buying_guide(user_message)
     
+    if "search" in response_type.lower():
+        Q_phrases = ["ایا", "آیا"]
+        if any(phrase in user_message for phrase in Q_phrases):
+            response_type = "availability_check"
+            memory_state["previous_type"] = "availability_check"
+            print("change from search to ava")
+
 
     # ✅ قسمت 2: در کد اصلی چک کردن نوع availability_check
     if "availability_check" in response_type.lower():
@@ -2863,6 +2953,8 @@ async def real_estate_chatbot(user_message: str) -> str:
                 filters["post_delivery"] = 1
             elif value == "no" or value == "0":  # اگر مقدار no یا 0 بود
                 filters["post_delivery"] = 0
+            elif value == "dc":
+                filters["post_delivery"] = "All"
 
 
 
@@ -3107,6 +3199,10 @@ async def real_estate_chatbot(user_message: str) -> str:
         if "min_area" in memory_state:
             del memory_state["min_area"]
 
+        if "post_delivery" in memory_state:
+            if memory_state["post_delivery"] == "All":
+                del memory_state["post_delivery"]
+
         properties = filter_properties(memory_state)
 
         # ✅ فیلتر `delivery_date` (تحویل ملک) فقط بر اساس سال
@@ -3160,7 +3256,10 @@ async def real_estate_chatbot(user_message: str) -> str:
         if "apartmentType" in extracted_data:
             memory_state["apartmentType"] = extracted_data.get("apartmentType")
 
-
+        if "post_delivery" in extracted_data:
+            value = str(extracted_data["post_delivery"]).lower()  # تبدیل مقدار به رشته و کوچک کردن حروف
+            if value == "dc":
+                memory_state["post_delivery"] = "All"
 
         print("🔹 memory:", memory_state)
         # logging.info(f"memory: {memory_state}")
@@ -3504,6 +3603,8 @@ async def real_estate_chatbot(user_message: str) -> str:
                 filters["post_delivery"] = 1
             elif value == "no" or value == "0":  # اگر مقدار no یا 0 بود
                 filters["post_delivery"] = 0
+            elif value == "dc":
+                filters["post_delivery"] = "All"
 
 
 
@@ -3749,6 +3850,10 @@ async def real_estate_chatbot(user_message: str) -> str:
         if "min_area" in memory_state:
             del memory_state["min_area"]
 
+        if "post_delivery" in memory_state:
+            if memory_state["post_delivery"] == "All":
+                del memory_state["post_delivery"]
+
         properties = filter_properties(memory_state)
 
         # ✅ فیلتر `delivery_date` (تحویل ملک) فقط بر اساس سال
@@ -3801,6 +3906,11 @@ async def real_estate_chatbot(user_message: str) -> str:
 
         if "apartmentType" in extracted_data:
             memory_state["apartmentType"] = extracted_data.get("apartmentType")
+
+        if "post_delivery" in extracted_data:
+            value = str(extracted_data["post_delivery"]).lower()  # تبدیل مقدار به رشته و کوچک کردن حروف
+            if value == "dc":
+                memory_state["post_delivery"] = "All"
 
 
         print("🔹 memory:", memory_state)
