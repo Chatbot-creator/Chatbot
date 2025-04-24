@@ -50,9 +50,40 @@ HEADERS = {
 
 # کش با زمان انقضای 24 ساعت (86400 ثانیه)
 property_cache = TTLCache(maxsize=1, ttl=86400)
+# def fetch_all_properties():
+#     print("🚀 شروع دریافت املاک از API...")
+#     all_properties = []
+#     page = 1
+#     limit = 100
+
+#     while True:
+#         print(f"📄 در حال پردازش صفحه {page}...")
+#         res = requests.post(f"{ESTATY_API_URL}/getProperties", json={"page": page, "limit": limit}, headers=HEADERS)
+#         json_data = res.json()
+
+#         current_data = json_data.get("properties", {}).get("data", [])
+#         if not current_data:
+#             break
+
+#         all_properties.extend(current_data)
+
+#         total = json_data.get("properties", {}).get("total", 0)
+#         if len(current_data) < 12:
+#             print("✅ به آخر لیست رسیدیم.")
+#             break
+#         # if page * limit >= total:
+#         #     print("✅ به آخر لیست رسیدیم.")
+#         #     break
+
+#         page += 1
+
+#     print(f"✅ Total fetched properties: {len(all_properties)}")
+#     return all_properties
 def fetch_all_properties():
     print("🚀 شروع دریافت املاک از API...")
     all_properties = []
+    districts_with_ids = {}  # ✅ دیکشنری منطقه‌ها
+
     page = 1
     limit = 100
 
@@ -67,24 +98,41 @@ def fetch_all_properties():
 
         all_properties.extend(current_data)
 
-        total = json_data.get("properties", {}).get("total", 0)
+        # ✅ استخراج نام و ID منطقه از هر ملک
+        for prop in current_data:
+            district_info = prop.get("district")
+            if district_info and isinstance(district_info, dict):
+                name = district_info.get("name", "").strip()
+                district_id = district_info.get("id")
+                if name and district_id and name not in districts_with_ids:
+                    districts_with_ids[name] = district_id
+
         if len(current_data) < 12:
             print("✅ به آخر لیست رسیدیم.")
             break
-        # if page * limit >= total:
-        #     print("✅ به آخر لیست رسیدیم.")
-        #     break
 
         page += 1
 
     print(f"✅ Total fetched properties: {len(all_properties)}")
-    return all_properties
+    print(f"✅ Total districts: {len(districts_with_ids)}")
 
+    # ✅ بازگرداندن یک دیکشنری شامل هر دو
+    return {
+        "properties": all_properties,
+        "districts": districts_with_ids
+    }
+
+# def fetch_and_cache_properties():
+#     all_props = fetch_all_properties()
+#     property_cache["all"] = all_props
+#     print(f"🕓 Property cache updated at {datetime.now()}")
+#     print(f"✅ {len(all_props)} ملک ذخیره شد.")
 def fetch_and_cache_properties():
-    all_props = fetch_all_properties()
-    property_cache["all"] = all_props
+    result = fetch_all_properties()
+    property_cache["all"] = result
     print(f"🕓 Property cache updated at {datetime.now()}")
-    print(f"✅ {len(all_props)} ملک ذخیره شد.")
+    print(f"✅ {len(result['properties'])} ملک ذخیره شد.")
+    print(f"✅ {len(result['districts'])} منطقه ذخیره شد.")
 
 
 scheduler = BackgroundScheduler()
@@ -104,13 +152,23 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# @app.get("/all-properties")
+# def get_cached_properties():
+#     data = property_cache.get("all")
+#     if data is None:
+#         return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
+#     return {"properties": data, "count": len(data)}
 @app.get("/all-properties")
 def get_cached_properties():
     data = property_cache.get("all")
     if data is None:
         return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
-    return {"properties": data, "count": len(data)}
-
+    return {
+        "properties": data["properties"],
+        "districts": data["districts"],
+        "property_count": len(data["properties"]),
+        "district_count": len(data["districts"])
+    }
 
 
 #----------------------------------------------------------------------Bot
