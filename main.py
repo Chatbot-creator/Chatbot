@@ -17,6 +17,7 @@ import logging
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi.responses import JSONResponse
+import copy
 
 # logging.basicConfig(
 #     level=logging.INFO,  # می‌تونی DEBUG یا WARNING هم بذاری
@@ -135,11 +136,15 @@ def filter_properties(filters):
     # print("🔹 داده‌های دریافت‌شده از API:", response_data)
 
 
-    ####
-    # filtered_properties = [
-    #     property for property in response_data.get("properties", [])
-    #     if property.get("sales_status", {}).get("name", "").lower() in ["available", "pre launch"]
-    # ]
+    # if response.status_code == 200 and response.text.strip():
+    #     try:
+    #         response_data = response.json()
+    #     except json.JSONDecodeError:
+    #         print("❌ JSON decode error. پاسخ سرور:", response.text)
+    #         return []
+    # else:
+    #     print("❌ پاسخ API نامعتبر یا خالی است:", response.status_code, response.text)
+    #     return []
 
 
     ##########
@@ -305,9 +310,9 @@ def extract_filters(user_message: str, previous_filters: dict):
     developer_names = ", ".join(developer_mapping.keys())
     district_names = ", ".join(district_mapping.keys())
 
-    prompt = f"""
-    کاربر به دنبال یک ملک در دبی است. از پیام زیر جزئیات مرتبط را استخراج کن:
 
+    user_prompt = f"""
+    پیام کاربر:
     "{user_message}"
 
 
@@ -315,6 +320,11 @@ def extract_filters(user_message: str, previous_filters: dict):
     ```json
     {json.dumps(previous_filters, ensure_ascii=False)}
     ```
+    """
+
+    prompt_system = f"""
+    کاربر به دنبال یک ملک در دبی است. از پیام کاربر جزئیات مرتبط را استخراج کن:
+
 
     **📌 قوانین پردازش:**
     - 🚨 غلط‌های املایی رایج را اصلاح کن. اما اگر کلمه‌ای به صورت صحیح نام یک شرکت یا منطقه باشد، آن را تغییر نده.
@@ -322,6 +332,11 @@ def extract_filters(user_message: str, previous_filters: dict):
 
     - **🚨 مهم:** اگر معنی کلی جمله با وجود غلط املایی قابل فهم است، متن را به صورت صحیح پردازش کن.
     - **🚨 نکته:** اگر غلط املایی معنی جمله را تغییر دهد، سعی کن معنی درست را حدس بزنی
+
+
+    - 🚨 اگر **هرکدام** از این دو فیلد (`max_price` یا `bedrooms`) نه در پیام فعلی کاربر و نه در اطلاعات قبلی موجود باشد، مقدار `"search_ready"` را `false` قرار بده.
+    - اگر فقط یکی از این دو داده شده باشد و دیگری همچنان نامشخص است، باز هم `"search_ready"` را `false` بگذار و فقط درباره فیلدی که هنوز داده نشده، سؤال پیشنهاد بده.
+    - اگر فقط یکی از این دو مشخص شده باشد (مثلاً کاربر گفته "واحد یک‌خوابه می‌خوام" ولی بودجه نگفته)، باز هم `"search_ready"` را `false` قرار بده.
 
 
     - 🚨 اگر یکی از موارد max_price: حداکثر بودجه، bedrooms: تعداد اتاق‌خواب در پیام کاربر یا در اطلاعات قبلی کاربر موجود نیست مقدار "search_ready": false قرا بده و سؤالات پیشنهادی را که اطلاعاتش توسط کاربر داده نشده را بپرس.
@@ -344,7 +359,13 @@ def extract_filters(user_message: str, previous_filters: dict):
     - **🚨 تو تشخیص 'district' دقت کن که مناطق گفته شده در امارات هست **
     - **🚨 تو سوالاتی که میپرسی دقت کن که اگر مقدریش چه قبلا چه الان داده شده درمورد اون سوال نپرس **
     - ** فقط اطلاعاتی را که در پیام جدید کاربر **نیامده است و در اطلاعات قبلی نیز وجود ندارد**، در `questions_needed` قرار بده.** 
-    -  اگر بودجه یا تعداد اتاق خواب مشخص نشده بود سوال متناسب با آنرا از ** questions_needed انتخاب و خروجی بده**
+
+        اگر مقدار max_price, bedrooms, یا post_delivery مشخص نشده باشد (چه در پیام فعلی و چه در اطلاعات قبلی کاربر)، سؤال مربوط به آن را متناسب از لیست زیر در questions_needed قرار بده:
+
+        اگر max_price مشخص نیست → "بودجه شما چقدر است؟"
+
+        اگر bedrooms مشخص نیست → "چند اتاق خواب مدنظرتان است؟"
+        
     -  اگر نام منطقه 'district' در پیام کاربر وجود دارد ولی واژه‌ی "منطقه" در کنار آن نیامده، همچنان آن را به‌عنوان منطقه تشخیص بده.
     - اگر کاربر گفت "اقساط بعد از تحویل" مقدار 'post_delivery' را 'Yes' بذار و اگر گفت نداشته باشه مقدارش را 'No' بذار.
     - اگر کاربر گفت برنامه پرداخت داشته باشه مقدار 'payment_plan' را 'Yes' بذار و اگر گفت نداشته باشه مقدارش را 'No' بذار.
@@ -378,13 +399,17 @@ def extract_filters(user_message: str, previous_filters: dict):
 
 
     - اگر کاربر گفت گارانتی اجاره داشته باشه مقدار 'guarantee_rental_guarantee' را 'Yes' بذار و اگر گفت نداشته باشه مقدارش را 'No' بذار.
-    - 🚨 **نکته:** اگر کاربر فقط "اقساط" گفت و اشاره‌ای به برنامه پرداخت نکرد، مقدار `payment_plan` را به اشتباه 'yes' نکن!  
     - 🚨 **نکته:** اگر کاربر فقط "برنامه پرداخت" گفت و اشاره‌ای به پرداخت بعد از تحویل نکرد، مقدار `post_delivery` را به اشتباه 'yes' نکن!  
     - **قیمت‌ها (`min_price`, `max_price`) باید همیشه به عنوان `عدد` (`int`) برگردانده شوند، نه `string`**.
     - اسم شرکت ها رو به انگلیسی ذخیره کن. اگر به فارسی نوشته شده با توجه به اطلاعاتت اسم شرکت رو ذخیره کن یا چیزی نزدیک به آن را
     - امکانات گفته شده رو به انگلیسی ذخیره کن
     - اگر کاربر نوشته باشد "ی خابه"، منظور او "یک خوابه" است. این یک غلط املایی رایج است. مقدار `bedrooms` را `1` قرار بده.
     - "استودیو می‌خوام" یا "واحد استودیو" → مقدار bedrooms را "studio" قرار بده.
+
+    اگر کاربر از عباراتی مانند "استودیو می‌خوام"، "واحد استودیو"، "خونه استودیو" استفاده کرده باشد، مقدار "bedrooms" را برابر "studio" قرار بده.
+
+
+    - اگر پیام کاربر فقط عباراتی مانند "فرقی نداره" ، "مهم نیست" یا "قیمتش برام مهم نیست" بود مقدار "Dont_care" رو برابر با 'yes' قرار بده.
 
     - اگر کاربر فقط عبارت "مسکونی" یا "تجاری" را گفته باشد (حتی بدون ذکر جزئیات دیگر)، مقدار `property_type` را بر اساس آن تنظیم کن:
         - اگر گفت "مسکونی" یا عباراتی مثل "ملک مسکونی"، مقدار `property_type` را `"Residential"` قرار بده.
@@ -395,7 +420,7 @@ def extract_filters(user_message: str, previous_filters: dict):
     - اگر کاربر گفت **"قیمت برام مهم نیست"**، در مورد بودجه کاربر سوال نپرس.
     - اگر کاربر گفت که **"قیمت مهم نیست"** یا **"فرقی نداره"**، مقدار `max_price` و `min_price` را `null` بگذار و دیگر درباره قیمت سوال نپرس.
     - اگر نام شهر توسط کاربر گفته نشده مقدار 'city' را null .بزار و فقط وقتی نام شهر گفته شد خروجی شده شهر های گفت شده یا دوبی است یا ابوظبی
-    - اگر کاربر گفت 'با حدود X میلیون خونه میخوام' یا 'با X میلیون خونه میخوام' یا 'واحد x میلیونی میخوام'، مقدار X را به عدد تبدیل کن و برای فیلدهای `min_price` و `max_price` به‌صورت زیر مقداردهی کن:
+    - اگر کاربر گفت 'با حدود X میلیون خونه میخوام' یا 'با X میلیون خونه میخوام' یا 'واحد x میلیونی میخوام' یا 'خونه با x درهم میخوام' یا مثلا سوالی مثل 'آیا خونه با xدرهم موجود است؟' پرسید، مقدار X را به عدد تبدیل کن و برای فیلدهای `min_price` و `max_price` به‌صورت زیر مقداردهی کن:
         - مقدار `max_price` را ده درصد  بیشتر از مقدار گفته‌شده قرار بده.
         - مقدار `min_price` را ده درصد  کمتر از مقدار گفته‌شده تنظیم کن.
         - اگر کاربر قیمت گفته هر دو مقدار 'max_price'و 'min_price' رو مقدار دهی کن همانطور که بهت گفتم
@@ -409,6 +434,7 @@ def extract_filters(user_message: str, previous_filters: dict):
     - اگر کاربر عباراتی مانند "زیر X میلیون"، "کمتر از X میلیون"، "حداکثر X میلیون"، "تا X میلیون" گفت:
         - فقط مقدار `max_price` را با عدد گفته شده تنظیم کن.
         - مقدار `min_price` را **null** قرار بده یا آن را **حذف کن** حتی اگر قبلاً تنظیم شده باشد.
+    
 
     - نام مناطق ممکن است **به صورت مستقیم** در جمله ظاهر شوند، حتی اگر واژه‌های "منطقه" یا "در" وجود نداشته باشد.  
       - مثال‌ها:  
@@ -486,9 +512,10 @@ def extract_filters(user_message: str, previous_filters: dict):
     - "developer_company" (اگر شرکت سازنده ذکر شده)
     - "delivery_date" ( اگر ذکر شده به فرمت `YYYY-MM` خروجی بده)
     - "payment_plan" (اگر ذکر شده و میخواد 'Yes' بده اگر نخواست 'No' بده اگر چیزی نگفت 'null' بزار)
-    - "post_delivery" (اگر کاربر گفت "بعد از تحویل" مقدارش را 'Yes' بزار، اگر گفت "قبل از تحویل" مقدارش را 'No' بزار، اگر گفت "قسطی" یا "اقساطی" یا "شرایطی" و زمان پرداخت را مشخص نکرد، مقدارش را 'question' بزار. اگر هیچ اشاره‌ای به اقساط نبود، مقدارش را 'null' بزار.)
+    - "post_delivery" (بین موارد "yes"یا "no" یا "All" یا "question" یا null یکیرو بر اساس توضیحاتی که تو قوانین گفتم قرار بده)
     - "guarantee_rental_guarantee" (اگر ذکر شده و میخواد 'Yes' بده اگر نخواست 'No' بده اگر چیزی نگفت 'null' بزار)
     - "facilities_name" (امکانات املاک مثل "Cinema"، "Clinic")
+    - "Dont_care(مقدارش یا 'null' هست یا 'yes') 
 
 
     **اگر هر یک از این فیلدها در درخواست کاربر ذکر نشده بود، مقدار آن را null قرار بده.**
@@ -499,7 +526,7 @@ def extract_filters(user_message: str, previous_filters: dict):
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": prompt}]
+            messages=[{"role": "system", "content": prompt_system}, {"role": "user", "content": user_prompt}]
         )
 
         print("🔹 پاسخ OpenAI:", response)
@@ -515,11 +542,15 @@ def extract_filters(user_message: str, previous_filters: dict):
         if response_content.startswith("```json"):
             response_content = response_content.replace("```json", "").replace("```", "").strip()
 
+
         print("🔹 داده JSON پردازش شده:", response_content)
         # logging.info(f"extracted from user message: {response_content}")
         extracted_data = json.loads(response_content)
                 # حفظ فیلترهای قبلی اگر مقدار جدیدی ارائه نشده باشد
-
+        # ✅ تضمین اینکه always لیست باشه نه None
+        if extracted_data.get("questions_needed") is None:
+            extracted_data["questions_needed"] = []
+        
         # if not extracted_data.get("search_ready"):
         #     missing_questions = extracted_data.get("questions_needed", [])
         #     if missing_questions:
@@ -540,12 +571,14 @@ def extract_filters(user_message: str, previous_filters: dict):
             "bedrooms", "min_price", "max_price", "district", "city", "property_type",
             "apartmentType", "payment_plan", "post_delivery", "developer_company",
             "delivery_date", "guarantee_rental_guarantee", "facilities_name",
-            "sales_status", "min_area", "max_area"
+            "sales_status", "min_area", "max_area", "Dont_care"
         ]
         
         for key in essential_keys:
             if extracted_data.get(key) is None and memory_state.get(key) is not None:
                 extracted_data[key] = memory_state[key]  # ✅ مقدار قبلی را نگه دار
+
+        print("extarcted_after_get:", extracted_data)
 
         # بررسی وجود قیمت و تعداد اتاق
         if extracted_data.get("bedrooms") is not None:
@@ -557,9 +590,19 @@ def extract_filters(user_message: str, previous_filters: dict):
             if "چند اتاق خواب مدنظرتان است؟" not in extracted_data["questions_needed"]:
                 extracted_data["questions_needed"].append("چند اتاق خواب مدنظرتان است؟")
 
+
         if extracted_data.get("max_price") is not None:
             if "بودجه شما چقدر است؟" in extracted_data.get("questions_needed", []):
                 extracted_data["questions_needed"].remove("بودجه شما چقدر است؟")
+
+        if extracted_data.get("max_price") is None:
+            if "بودجه شما چقدر است؟" not in extracted_data["questions_needed"]:
+                extracted_data["questions_needed"].append("بودجه شما چقدر است؟")
+
+        if extracted_data["Dont_care"] == "yes":
+            extracted_data["questions_needed"] = []
+            print("dc")
+
 
         if memory_state.get("post_delivery") == "Yes":
             extracted_data["post_delivery"] = "Yes"
@@ -606,7 +649,7 @@ def extract_filters(user_message: str, previous_filters: dict):
             extracted_data["search_ready"] = True  # ✅ اطلاعات کافی است، `search_ready` را `true` کن
             extracted_data["questions_needed"] = []
         else:
-            if extracted_data["search_ready"] == True:
+            if extracted_data["search_ready"]:
                 extracted_data["questions_needed"] = []
 
 
@@ -1752,8 +1795,11 @@ def find_districts_by_budget(max_price=None, min_price=None, max_area= None, min
     # if guarantee_rental is not None:
     #     filters["guarantee_rental_guarantee"] = 1 if guarantee_rental in ["Yes", "1"] else 0
 
-    filters["property_status"] = 'Off Plan'
-    filters["sales_status"] = [1]
+    # filters["property_status"] = 'Off Plan'
+    # filters["sales_status"] = [1]
+
+    filters["property_status_id"] = [2]
+    filters["sales_status_id"] = [1]
 
     print(filters)
     # logging.info(f"filter district: {filters}")
@@ -2181,22 +2227,50 @@ def find_price(district=None, bedrooms=None, apartment_typ=None, max_area= None,
             if mapped_developers:  # **اگر شرکت‌هایی پیدا شدند، به `filters` اضافه شود**
                 filters["developer_company_id"] = mapped_developers
 
-    if post_delivery is not None:
-        if post_delivery in ["Yes", "1"]:
-            filters["post_delivery"] = 1
-        elif post_delivery in ["No", "0"]:
-            filters["post_delivery"] = 0
+    # if post_delivery is not None:
+    #     if post_delivery in ["Yes", "1"]:
+    #         filters["post_delivery"] = 1
+    #     elif post_delivery in ["No", "0"]:
+    #         filters["post_delivery"] = 0
 
+    # if payment_plan is not None:
+    #     if payment_plan in ["Yes", "1"]:
+    #         filters["payment_plan"] = 1
+    #     elif payment_plan in ["No", "0"]:
+    #         filters["payment_plan"] = 0
+
+    # if guarantee_rental is not None:
+    #     if guarantee_rental in ["Yes", "1"]:
+    #         filters["guarantee_rental_guarantee"] = 1
+    #     elif guarantee_rental in ["No", "0"]:
+    #         filters["guarantee_rental_guarantee"] = 0
+
+    # ✅ اضافه کردن `payment_plan`
     if payment_plan is not None:
-        if payment_plan in ["Yes", "1"]:
+        value = str(payment_plan).lower()  # تبدیل مقدار به رشته و کوچک کردن حروف
+        if value == "yes" or value == "1":  # اگر مقدار yes یا 1 بود
             filters["payment_plan"] = 1
-        elif payment_plan in ["No", "0"]:
+        elif value == "no" or value == "0":  # اگر مقدار no یا 0 بود
             filters["payment_plan"] = 0
 
+
+    # ✅ اضافه کردن `post_delivery`
+    if post_delivery is not None:
+        value = str(post_delivery).lower()  # تبدیل مقدار به رشته و کوچک کردن حروف
+        if value == "yes" or value == "1":  # اگر مقدار yes یا 1 بود
+            filters["post_delivery"] = 1
+        elif value == "no" or value == "0":  # اگر مقدار no یا 0 بود
+            filters["post_delivery"] = 0
+        elif value == "dc":
+            filters["post_delivery"] = "All"
+
+
+
     if guarantee_rental is not None:
-        if guarantee_rental in ["Yes", "1"]:
+        value = str(guarantee_rental).lower()  # تبدیل مقدار به رشته و کوچک کردن حروف
+        if value == "yes" or value == "1":  # اگر مقدار yes یا 1 بود
             filters["guarantee_rental_guarantee"] = 1
-        elif guarantee_rental in ["No", "0"]:
+        elif value == "no" or value == "0":  # اگر مقدار no یا 0 بود
             filters["guarantee_rental_guarantee"] = 0
 
     # if payment_plan is not None:
@@ -2205,9 +2279,12 @@ def find_price(district=None, bedrooms=None, apartment_typ=None, max_area= None,
     # if guarantee_rental is not None:
     #     filters["guarantee_rental_guarantee"] = 1 if guarantee_rental in ["Yes", "1"] else 0
 
-    filters["property_status"] = 'Off Plan'
+    # filters["property_status"] = 'Off Plan'
 
-    filters["sales_status"] = [1]
+    # filters["sales_status"] = [1]
+
+    filters["property_status_id"] = [2]
+    filters["sales_status_id"] = [1]
 
     print(filters)
     # logging.info(f"filter find price: {filters}")
@@ -2276,13 +2353,44 @@ def find_price(district=None, bedrooms=None, apartment_typ=None, max_area= None,
     return response
 
 
+def apply_manual_filters(properties, filters_date, filters_area):
+    # ✅ فیلتر تاریخ تحویل
+    if filters_date.get("delivery_date"):
+        target_year = filters_date["delivery_date"]
+        start_of_year = int(datetime(target_year, 1, 1).timestamp())
+        end_of_year = int(datetime(target_year, 12, 31, 23, 59, 59).timestamp())
+
+        properties = [
+            prop for prop in properties
+            if "delivery_date" in prop and prop["delivery_date"].isdigit() and 
+            start_of_year <= int(prop["delivery_date"]) <= end_of_year
+        ]
+        print(f"🔍 بعد از فیلتر بر اساس سال تحویل ({target_year}): {len(properties)}")
+
+    # ✅ فیلتر مساحت
+    if filters_area.get("min_area") is not None or filters_area.get("max_area") is not None:
+        min_area = filters_area.get("min_area", 0)
+        max_area = filters_area.get("max_area", float("inf"))
+
+        properties = [
+            prop for prop in properties
+            if "min_area" in prop and prop["min_area"] is not None and isinstance(prop["min_area"], (int, float)) and
+            (min_area * 10.7639) <= float(prop["min_area"]) <= (max_area * 10.7639)
+        ]
+
+        print(f"📐 بعد از فیلتر بر اساس مساحت پروژه (sqft) بین {min_area * 10.7639} تا {max_area * 10.7639}: {len(properties)}")
+
+    return properties
+
+
+
 
 def clear_filter_memory(memory_state):
     filter_keys = [
         "bedrooms", "min_price", "max_price", "district", "city", "property_type",
         "apartmentType", "payment_plan", "post_delivery", "developer_company",
         "delivery_date", "guarantee_rental_guarantee", "facilities_name",
-        "sales_status", "min_area", "max_area", "new_search", "search_ready", "questions_needed"
+        "sales_status", "min_area", "max_area", "new_search", "search_ready", "questions_needed", "Dont_care"
     ]
     for key in filter_keys:
         memory_state.pop(key, None)  # پاک کن اگه هست
@@ -2307,9 +2415,10 @@ async def real_estate_chatbot(user_message: str) -> str:
         ])
 
     # ✅ **۲. استفاده از هوش مصنوعی برای تشخیص نوع درخواست کاربر**
-    prompt = f"""
-    کاربر در حال مکالمه با یک مشاور املاک در دبی به زبان فارسی است. پیام زیر را تجزیه و تحلیل کن:
+    user_prompt = f"""
+    کاربر در حال مکالمه با یک مشاور املاک در دبی به زبان فارسی است. پیام زیر پیام کاربر است:
 
+    📨 پیام کاربر:
     "{user_message}"
 
     
@@ -2322,6 +2431,13 @@ async def real_estate_chatbot(user_message: str) -> str:
 
     **📌 لیست مناطقی که قبلاً به کاربر پیشنهاد شده‌اند:**
     {memory_district.get("suggested_districts", [])}
+
+    🔍 لطفاً نوع پیام و جزئیات درخواستی را تشخیص دهید.
+    """
+
+    system_prompt = """
+    شما یک مدل هوش مصنوعی هستید که به عنوان مشاور املاک فارسی‌زبان در دبی فعالیت می‌کنید.
+    وظیفه‌ی شما تحلیل پیام کاربران و تشخیص نوع درخواست آن‌هاست.
 
     **لطفاً مشخص کنید که پیام کاربر به کدام یک از این دسته‌ها تعلق دارد:**
 
@@ -2445,13 +2561,17 @@ async def real_estate_chatbot(user_message: str) -> str:
 
     - معمولاً کلمات کلیدی مثل "در چه رنجی"، "چقدره" وجود داره.  
     - ممکنه ویژگی‌هایی مثل **تعداد اتاق، منطقه، امکانات** گفته بشه، ولی سؤال درباره محدوده قیمته نه معرفی ملک.  
+
+    📌 **مثال‌ها:**
     - "قیمت ملک تو بیزینس بی چنده؟"  
     - "قیمت واحد یک‌خوابه تو بیزینس بی چنده؟" 
     - "قیمت واحد دوخوابه با استخر تو چه رنجی است؟"  
     - "آپارتمان تو مارینا چند درمیاد؟"  
     - "قیمت واحد در جمیرا چقدره؟"  
 
-    ❌ **اگر سوال درباره قیمت یک ملک مشخص باشد (نه منطقه)، حالت `details` را انتخاب کن.**  
+
+    - **اگر نام منطقه یا ویژگی‌هایی عمومی مثل استخر، اتاق خواب، مساحت، اقساط و ... گفته شده بود اما اسم خاص پروژه نه، `property_price` انتخاب کن.**
+    ❌ **اگر سوال درباره قیمت یک ملک مشخص باشد و کاربر اسم ملک رو گفته (نه منطقه)، حالت `details` را انتخاب کن.**  
     ✅ اگر کاربر فقط درباره قیمت ملک با ویژگی‌هایی مثل "تعداد اتاق"، "امکانات"، یا "منطقه" پرسیده بود، اما به‌دنبال جستجوی ملک نبود، این حالت را انتخاب کن.
 
     ---
@@ -2534,7 +2654,10 @@ async def real_estate_chatbot(user_message: str) -> str:
 
     ai_response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "system", "content": prompt}],
+        messages=[
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+        ],
         max_tokens=50
     )
 
@@ -2578,7 +2701,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         "bedrooms", "min_price", "max_price", "district", "city", "property_type",
         "apartmentType", "payment_plan", "post_delivery", "developer_company",
         "delivery_date", "guarantee_rental_guarantee", "facilities_name",
-        "sales_status", "min_area", "max_area"
+        "sales_status", "min_area", "max_area", "Dont_care"
     ]
 
     if memory_state.get("pending_message"):
@@ -2593,6 +2716,7 @@ async def real_estate_chatbot(user_message: str) -> str:
                 clear_filter_memory(memory_state)
                 response_type = types["previous_type"]
                 user_message = memory_state["pending_message"]
+                just_answered_questions = True
             
 
             # elif "ادامه بده" in user_message:
@@ -2611,6 +2735,8 @@ async def real_estate_chatbot(user_message: str) -> str:
         print("memory_edame", memory_state)
 
 
+    if types.get("previous_type") == "availability_check" and types.get("current_type") == "search":
+        memory_state["Dont_care"] = None
     #----------------------------------------- memory newest logic   
     print("message_type_ghable_soal", message_type)
     print("has_active_filters", has_active_filters)
@@ -2717,6 +2843,8 @@ async def real_estate_chatbot(user_message: str) -> str:
             response_type = "availability_check"
             memory_state["previous_type"] = "availability_check"
             print("change from search to ava")
+
+
 
 
     # ✅ قسمت 2: در کد اصلی چک کردن نوع availability_check
@@ -2957,6 +3085,10 @@ async def real_estate_chatbot(user_message: str) -> str:
                 filters["post_delivery"] = "All"
 
 
+        if extracted_data["Dont_care"] == "yes":
+            filters["Dont_care"] = "yes"
+
+
 
         if extracted_data.get("guarantee_rental_guarantee") is not None:
             value = str(extracted_data["guarantee_rental_guarantee"]).lower()  # تبدیل مقدار به رشته و کوچک کردن حروف
@@ -3176,11 +3308,12 @@ async def real_estate_chatbot(user_message: str) -> str:
                     filters["facilities"] = mapped_facilities
 
 
-
-            
-        filters["property_status"] = 'Off Plan'
-        # filters["property_status"] = [2]
-        filters["sales_status"] = [1]
+        filters["property_status_id"] = [2]
+        filters["sales_status_id"] = [1]
+        
+        # filters["property_status"] = 'Off Plan'
+        # # filters["property_status"] = [2]
+        # filters["sales_status"] = [1]
         
         # filters["sales_status"] = 'Available'
         # filters["apartments"] = [12]
@@ -3192,6 +3325,9 @@ async def real_estate_chatbot(user_message: str) -> str:
 
         if "delivery_date" in memory_state:
             del memory_state["delivery_date"]
+
+        if "Dont_care" in memory_state:
+            del memory_state["Dont_care"]
 
         if "max_area" in memory_state:
             del memory_state["max_area"]
@@ -3238,6 +3374,69 @@ async def real_estate_chatbot(user_message: str) -> str:
             print(f"📐 بعد از فیلتر بر اساس مساحت پروژه (sqft) بین {min_area * 10.7639} تا {max_area * 10.7639}: {len(properties)}")
 
 
+        if not properties and (
+            (memory_state.get("max_price") is not None) or (memory_state.get("min_price") is not None)
+        ):
+        # if not properties:
+            # ذخیره فیلترهای اصلی (با قیمت)
+            filters_with_price = copy.deepcopy(memory_state)
+
+            # حذف فیلتر قیمت برای بررسی دوباره
+            filters_without_price = copy.deepcopy(memory_state)
+            filters_without_price.pop("max_price", None)
+            filters_without_price.pop("min_price", None)
+
+            print("🔍 هیچ ملکی با فیلترهای فعلی یافت نشد، در حال بررسی بدون قیمت...")
+
+            properties_without_price = filter_properties(filters_without_price)
+
+            properties_without_price = apply_manual_filters(properties_without_price, filters_date, filters_area)
+
+
+            if properties_without_price:
+                print("پیدا کردن کمترین قیمت موجود")
+                # lowest_price = min([
+                #     p["low_price"] for p in properties_without_price
+                #     if p.get("low_price") is not None
+                # ], default=None)
+                valid_prices = [
+                    p["low_price"] for p in properties_without_price
+                    if isinstance(p.get("low_price"), (int, float)) and p.get("low_price") > 0
+                ]
+
+                if valid_prices:
+                    lowest_price = min(valid_prices)
+                    print(f"📉 کمترین قیمت موجود بدون فیلتر بودجه: {lowest_price}")
+                else:
+                    print("❌ هیچ قیمت معتبری برای املاک پیدا نشد")
+                    lowest_price = None
+
+                if lowest_price:
+                    print(f"📉 کمترین قیمت موجود بدون فیلتر بودجه: {lowest_price}")
+
+                    # تنظیم فیلتر جدید از قیمت پایین به بالا
+                    memory_state["min_price"] = lowest_price
+                    memory_state["max_price"] = lowest_price * 1.2
+
+                    properties = filter_properties(memory_state)
+
+                    properties = apply_manual_filters(properties, filters_date, filters_area)
+
+                    properties = sort_properties_by_developer_popularity(properties)
+
+                    response = await generate_ai_summary(properties)
+
+                    message_f = f""" 
+                    <div style="text-align: right; direction: rtl; padding: 10px; width: 100%;">
+                        <h3 style="color: black;">
+                            😔 متأسفانه هیچ ملکی با بودجه فعلی شما پیدا نشد، 
+                            اما از قیمت <span style="color: #007bff;">{lowest_price:,} درهم</span> به بالا، با مشخصات انتخابی شمااملاک زیر پیشنهاد می‌شوند:
+                        </h3>
+                    </div>
+                    """
+
+                    return message_f + response
+
         if "max_area" in filters_area:
             memory_state["max_area"] = filters_area["max_area"]
 
@@ -3246,6 +3445,9 @@ async def real_estate_chatbot(user_message: str) -> str:
 
         if "bedrooms" in extracted_data:
             memory_state["bedrooms"] = extracted_data.get("bedrooms")
+
+        if "Dont_care" in extracted_data:
+            memory_state["Dont_care"] = extracted_data.get("Dont_care")
 
         if "developer_company" in extracted_data:
             memory_state["developer_company"] = extracted_data.get("developer_company")
@@ -3274,6 +3476,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         #     return message + "\n" + response
         # else:
         #     return "❌ ملکی با این مشخصات در حال حاضر موجود نیست."
+
         
 
         if len(properties) > 0:
@@ -3606,6 +3809,8 @@ async def real_estate_chatbot(user_message: str) -> str:
             elif value == "dc":
                 filters["post_delivery"] = "All"
 
+        if extracted_data["Dont_care"] == "yes":
+            filters["Dont_care"] = "yes"
 
 
         if extracted_data.get("guarantee_rental_guarantee") is not None:
@@ -3828,9 +4033,11 @@ async def real_estate_chatbot(user_message: str) -> str:
 
 
             
-        filters["property_status"] = 'Off Plan'
-        # filters["property_status"] = [2]
-        filters["sales_status"] = [1]
+        # filters["property_status"] = 'Off Plan'
+        # filters["status"] = [2]
+        filters["property_status_id"] = [2]
+        filters["sales_status_id"] = [1]
+
         
         # filters["sales_status"] = 'Available'
         # filters["apartments"] = [12]
@@ -3843,6 +4050,8 @@ async def real_estate_chatbot(user_message: str) -> str:
         if "delivery_date" in memory_state:
             del memory_state["delivery_date"]
 
+        if "Dont_care" in memory_state:
+            del memory_state["Dont_care"]
 
         if "max_area" in memory_state:
             del memory_state["max_area"]
@@ -3889,6 +4098,70 @@ async def real_estate_chatbot(user_message: str) -> str:
             print(f"📐 بعد از فیلتر بر اساس مساحت پروژه (sqft) بین {min_area * 10.7639} تا {max_area * 10.7639}: {len(properties)}")
 
 
+        if not properties and (
+            (memory_state.get("max_price") is not None) or (memory_state.get("min_price") is not None)
+        ):
+        # if not properties:
+            # ذخیره فیلترهای اصلی (با قیمت)
+            filters_with_price = copy.deepcopy(memory_state)
+
+            # حذف فیلتر قیمت برای بررسی دوباره
+            filters_without_price = copy.deepcopy(memory_state)
+            filters_without_price.pop("max_price", None)
+            filters_without_price.pop("min_price", None)
+
+            print("🔍 هیچ ملکی با فیلترهای فعلی یافت نشد، در حال بررسی بدون قیمت...")
+
+            properties_without_price = filter_properties(filters_without_price)
+
+            properties_without_price = apply_manual_filters(properties_without_price, filters_date, filters_area)
+
+
+            if properties_without_price:
+                # پیدا کردن کمترین قیمت موجود
+                # lowest_price = min([
+                #     p["low_price"] for p in properties_without_price
+                #     if p.get("low_price") is not None
+                # ], default=None)
+                valid_prices = [
+                    p["low_price"] for p in properties_without_price
+                    if isinstance(p.get("low_price"), (int, float)) and p.get("low_price") > 0
+                ]
+
+                if valid_prices:
+                    lowest_price = min(valid_prices)
+                    print(f"📉 کمترین قیمت موجود بدون فیلتر بودجه: {lowest_price}")
+                else:
+                    print("❌ هیچ قیمت معتبری برای املاک پیدا نشد")
+                    lowest_price = None
+
+                if lowest_price:
+                    print(f"📉 کمترین قیمت موجود بدون فیلتر بودجه: {lowest_price}")
+
+                    # تنظیم فیلتر جدید از قیمت پایین به بالا
+                    memory_state["min_price"] = lowest_price
+                    memory_state["max_price"] = lowest_price * 1.2
+
+                    properties = filter_properties(memory_state)
+
+                    properties = apply_manual_filters(properties, filters_date, filters_area)
+
+                    properties = sort_properties_by_developer_popularity(properties)
+
+                    response = await generate_ai_summary(properties)
+
+                    message_f = f""" 
+                    <div style="text-align: right; direction: rtl; padding: 10px; width: 100%;">
+                        <h3 style="color: black;">
+                            😔 متأسفانه هیچ ملکی با بودجه فعلی شما پیدا نشد، 
+                            اما از قیمت <span style="color: #007bff;">{lowest_price:,} درهم</span> به بالا، با مشخصات انتخابی شمااملاک زیر پیشنهاد می‌شوند:
+                        </h3>
+                    </div>
+                    """
+
+                    return message_f + response
+
+
         if "max_area" in filters_area:
             memory_state["max_area"] = filters_area["max_area"]
 
@@ -3897,6 +4170,9 @@ async def real_estate_chatbot(user_message: str) -> str:
 
         if "bedrooms" in extracted_data:
             memory_state["bedrooms"] = extracted_data.get("bedrooms")
+
+        if "Dont_care" in extracted_data:
+            memory_state["Dont_care"] = extracted_data.get("Dont_care")
 
         if "developer_company" in extracted_data:
             memory_state["developer_company"] = extracted_data.get("developer_company")
