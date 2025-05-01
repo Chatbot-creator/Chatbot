@@ -150,7 +150,7 @@ def start_scheduler():
 from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # fetch_and_cache_properties() 
+    fetch_and_cache_properties() 
     start_scheduler()
     yield
 
@@ -167,27 +167,27 @@ def get_cached_properties(user_id: str = None):
     data = property_cache.get("all")
     if data is None:
         return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
-    # return {
-    #     "properties": data["properties"],
-    #     "districts": data["districts"],
-    #     "property_count": len(data["properties"]),
-    #     "district_count": len(data["districts"])
-    # }
-    response = {
+    return {
         "properties": data["properties"],
         "districts": data["districts"],
         "property_count": len(data["properties"]),
-        "district_count": len(data["districts"]),
+        "district_count": len(data["districts"])
     }
-    # ✅ اگر user_id فرستاده شده بود، فیلترهای کاربر رو هم برگردون
-    if user_id:
-        filters = user_filters_cache.get(user_id)
-        if filters:
-            response["user_filters"] = filters
-        else:
-            response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
+    # response = {
+    #     "properties": data["properties"],
+    #     "districts": data["districts"],
+    #     "property_count": len(data["properties"]),
+    #     "district_count": len(data["districts"]),
+    # }
+    # # ✅ اگر user_id فرستاده شده بود، فیلترهای کاربر رو هم برگردون
+    # if user_id:
+    #     filters = user_filters_cache.get(user_id)
+    #     if filters:
+    #         response["user_filters"] = filters
+    #     else:
+    #         response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
             
-    return response
+    # return response
 
 #----------------------------------------------------------------------Bot
 import random
