@@ -89,7 +89,8 @@ user_filters_cache = TTLCache(maxsize=10000, ttl=3600)
 
 sentry_sdk.init(
     dsn="https://0047340a78a30dc53983c35f76d67677@o4509247718686720.ingest.de.sentry.io/4509247727140944",
-    traces_sample_rate=1.0 
+    traces_sample_rate=1.0,
+    send_default_pii=True
 )
 
 def fetch_all_properties():
