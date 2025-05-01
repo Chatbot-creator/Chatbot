@@ -100,6 +100,7 @@ def fetch_and_cache_properties():
 
 
 scheduler = BackgroundScheduler()
+import threading
 
 def start_scheduler():
     scheduler.add_job(fetch_and_cache_properties, "interval", hours=24)
@@ -109,11 +110,19 @@ def start_scheduler():
 from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    fetch_and_cache_properties() 
-    start_scheduler()
+    # fetch_and_cache_properties() 
+    # start_scheduler()
     yield
 
+
+    def start_background_tasks():
+        fetch_and_cache_properties()
+        start_scheduler()
+
+    threading.Thread(target=start_background_tasks).start()
+
 app = FastAPI(lifespan=lifespan)
+
 
 
 @app.get("/all-properties")
