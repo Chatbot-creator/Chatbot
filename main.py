@@ -192,7 +192,7 @@ def get_cached_properties(user_id: str = None):
             
     return response
 
-@app.get("/fetch-status")
+@app.get("/all-properties/fetch-status")
 def fetch_status():
     return {"current_page": current_fetch_status["page"]}
 #----------------------------------------------------------------------Bot
