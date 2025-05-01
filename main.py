@@ -83,113 +83,116 @@ user_filters_cache = TTLCache(maxsize=10000, ttl=3600)
 
 #     print(f"✅ Total fetched properties: {len(all_properties)}")
 #     return all_properties
-def fetch_all_properties():
-    print("🚀 شروع دریافت املاک از API...")
-    all_properties = []
-    districts_with_ids = {}  # ✅ دیکشنری منطقه‌ها
 
-    page = 1
-    limit = 100
 
-    while True:
-        print(f"📄 در حال پردازش صفحه {page}...")
-        res = requests.post(f"{ESTATY_API_URL}/getProperties", json={"page": page, "limit": limit}, headers=HEADERS)
-        json_data = res.json()
+# def fetch_all_properties():
+#     print("🚀 شروع دریافت املاک از API...")
+#     all_properties = []
+#     districts_with_ids = {}  # ✅ دیکشنری منطقه‌ها
 
-        current_data = json_data.get("properties", {}).get("data", [])
-        if not current_data:
-            break
+#     page = 1
+#     limit = 100
 
-        all_properties.extend(current_data)
+#     while True:
+#         print(f"📄 در حال پردازش صفحه {page}...")
+#         res = requests.post(f"{ESTATY_API_URL}/getProperties", json={"page": page, "limit": limit}, headers=HEADERS)
+#         json_data = res.json()
 
-        # ✅ استخراج نام و ID منطقه از هر ملک
-        for prop in current_data:
-            district_info = prop.get("district")
-            if district_info and isinstance(district_info, dict):
-                name = district_info.get("name", "").strip()
-                district_id = district_info.get("id")
-                if name and district_id and name not in districts_with_ids:
-                    districts_with_ids[name] = district_id
+#         current_data = json_data.get("properties", {}).get("data", [])
+#         if not current_data:
+#             break
 
-        if len(current_data) < 12:
-            print("✅ به آخر لیست رسیدیم.")
-            break
+#         all_properties.extend(current_data)
 
-        page += 1
+#         # ✅ استخراج نام و ID منطقه از هر ملک
+#         for prop in current_data:
+#             district_info = prop.get("district")
+#             if district_info and isinstance(district_info, dict):
+#                 name = district_info.get("name", "").strip()
+#                 district_id = district_info.get("id")
+#                 if name and district_id and name not in districts_with_ids:
+#                     districts_with_ids[name] = district_id
 
-    print(f"✅ Total fetched properties: {len(all_properties)}")
-    print(f"✅ Total districts: {len(districts_with_ids)}")
+#         if len(current_data) < 12:
+#             print("✅ به آخر لیست رسیدیم.")
+#             break
 
-    # ✅ بازگرداندن یک دیکشنری شامل هر دو
-    return {
-        "properties": all_properties,
-        "districts": districts_with_ids
-    }
+#         page += 1
 
+#     print(f"✅ Total fetched properties: {len(all_properties)}")
+#     print(f"✅ Total districts: {len(districts_with_ids)}")
+
+#     # ✅ بازگرداندن یک دیکشنری شامل هر دو
+#     return {
+#         "properties": all_properties,
+#         "districts": districts_with_ids
+#     }
+
+# # def fetch_and_cache_properties():
+# #     all_props = fetch_all_properties()
+# #     property_cache["all"] = all_props
+# #     print(f"🕓 Property cache updated at {datetime.now()}")
+# #     print(f"✅ {len(all_props)} ملک ذخیره شد.")
 # def fetch_and_cache_properties():
-#     all_props = fetch_all_properties()
-#     property_cache["all"] = all_props
+#     result = fetch_all_properties()
+#     property_cache["all"] = result
 #     print(f"🕓 Property cache updated at {datetime.now()}")
-#     print(f"✅ {len(all_props)} ملک ذخیره شد.")
-def fetch_and_cache_properties():
-    result = fetch_all_properties()
-    property_cache["all"] = result
-    print(f"🕓 Property cache updated at {datetime.now()}")
-    print(f"✅ {len(result['properties'])} ملک ذخیره شد.")
-    print(f"✅ {len(result['districts'])} منطقه ذخیره شد.")
+#     print(f"✅ {len(result['properties'])} ملک ذخیره شد.")
+#     print(f"✅ {len(result['districts'])} منطقه ذخیره شد.")
 
 
-scheduler = BackgroundScheduler()
-import threading
+# scheduler = BackgroundScheduler()
+# import threading
 
-def start_scheduler():
-    scheduler.add_job(fetch_and_cache_properties, "interval", hours=24)
-    scheduler.start()
-    print("📅 Scheduler every 24h started.")
+# def start_scheduler():
+#     scheduler.add_job(fetch_and_cache_properties, "interval", hours=24)
+#     scheduler.start()
+#     print("📅 Scheduler every 24h started.")
 
-from contextlib import asynccontextmanager
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    threading.Thread(target=fetch_and_cache_properties).start()
-    # fetch_and_cache_properties() 
-    start_scheduler()
-    yield
+# from contextlib import asynccontextmanager
+# @asynccontextmanager
+# async def lifespan(app: FastAPI):
+#     threading.Thread(target=fetch_and_cache_properties).start()
+#     # fetch_and_cache_properties() 
+#     start_scheduler()
+#     yield
 
-app = FastAPI(lifespan=lifespan)
+# app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 
+# # @app.get("/all-properties")
+# # def get_cached_properties():
+# #     data = property_cache.get("all")
+# #     if data is None:
+# #         return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
+# #     return {"properties": data, "count": len(data)}
 # @app.get("/all-properties")
-# def get_cached_properties():
+# def get_cached_properties(user_id: str = None):
 #     data = property_cache.get("all")
 #     if data is None:
 #         return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
-#     return {"properties": data, "count": len(data)}
-@app.get("/all-properties")
-def get_cached_properties(user_id: str = None):
-    data = property_cache.get("all")
-    if data is None:
-        return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
-    # return {
-    #     "properties": data["properties"],
-    #     "districts": data["districts"],
-    #     "property_count": len(data["properties"]),
-    #     "district_count": len(data["districts"])
-    # }
-    response = {
-        "properties": data["properties"],
-        "districts": data["districts"],
-        "property_count": len(data["properties"]),
-        "district_count": len(data["districts"]),
-    }
-    # ✅ اگر user_id فرستاده شده بود، فیلترهای کاربر رو هم برگردون
-    if user_id:
-        filters = user_filters_cache.get(user_id)
-        if filters:
-            response["user_filters"] = filters
-        else:
-            response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
+#     # return {
+#     #     "properties": data["properties"],
+#     #     "districts": data["districts"],
+#     #     "property_count": len(data["properties"]),
+#     #     "district_count": len(data["districts"])
+#     # }
+#     response = {
+#         "properties": data["properties"],
+#         "districts": data["districts"],
+#         "property_count": len(data["properties"]),
+#         "district_count": len(data["districts"]),
+#     }
+#     # ✅ اگر user_id فرستاده شده بود، فیلترهای کاربر رو هم برگردون
+#     if user_id:
+#         filters = user_filters_cache.get(user_id)
+#         if filters:
+#             response["user_filters"] = filters
+#         else:
+#             response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
             
-    return response
+#     return response
 
 #----------------------------------------------------------------------Bot
 import random
