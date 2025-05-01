@@ -18,17 +18,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi.responses import JSONResponse
 import copy
+from typing import Optional
+from fastapi import Query
 
-# logging.basicConfig(
-#     level=logging.INFO,  # می‌تونی DEBUG یا WARNING هم بذاری
-#     format='%(asctime)s - %(levelname)s - %(message)s',
-#     handlers=[
-#         logging.FileHandler("app.log"),  # ذخیره تو فایل
-#         logging.StreamHandler()          # نمایش تو کنسول
-#     ]
-# )
 
-# properties_cache = {}
 properties_cache = TTLCache(maxsize=10000, ttl=3600)
 
 
@@ -53,36 +46,7 @@ HEADERS = {
 # کش با زمان انقضای 24 ساعت (86400 ثانیه)
 property_cache = TTLCache(maxsize=1, ttl=86400)
 user_filters_cache = TTLCache(maxsize=10000, ttl=3600)
-# user_filters_cache = {}
-# def fetch_all_properties():
-#     print("🚀 شروع دریافت املاک از API...")
-#     all_properties = []
-#     page = 1
-#     limit = 100
 
-#     while True:
-#         print(f"📄 در حال پردازش صفحه {page}...")
-#         res = requests.post(f"{ESTATY_API_URL}/getProperties", json={"page": page, "limit": limit}, headers=HEADERS)
-#         json_data = res.json()
-
-#         current_data = json_data.get("properties", {}).get("data", [])
-#         if not current_data:
-#             break
-
-#         all_properties.extend(current_data)
-
-#         total = json_data.get("properties", {}).get("total", 0)
-#         if len(current_data) < 12:
-#             print("✅ به آخر لیست رسیدیم.")
-#             break
-#         # if page * limit >= total:
-#         #     print("✅ به آخر لیست رسیدیم.")
-#         #     break
-
-#         page += 1
-
-#     print(f"✅ Total fetched properties: {len(all_properties)}")
-#     return all_properties
 def fetch_all_properties():
     print("🚀 شروع دریافت املاک از API...")
     all_properties = []
@@ -126,11 +90,7 @@ def fetch_all_properties():
         "districts": districts_with_ids
     }
 
-# def fetch_and_cache_properties():
-#     all_props = fetch_all_properties()
-#     property_cache["all"] = all_props
-#     print(f"🕓 Property cache updated at {datetime.now()}")
-#     print(f"✅ {len(all_props)} ملک ذخیره شد.")
+
 def fetch_and_cache_properties():
     result = fetch_all_properties()
     property_cache["all"] = result
@@ -140,7 +100,6 @@ def fetch_and_cache_properties():
 
 
 scheduler = BackgroundScheduler()
-import threading
 
 def start_scheduler():
     scheduler.add_job(fetch_and_cache_properties, "interval", hours=24)
@@ -150,7 +109,6 @@ def start_scheduler():
 from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # threading.Thread(target=fetch_and_cache_properties).start()
     fetch_and_cache_properties() 
     start_scheduler()
     yield
@@ -158,23 +116,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-# @app.get("/all-properties")
-# def get_cached_properties():
-#     data = property_cache.get("all")
-#     if data is None:
-#         return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
-#     return {"properties": data, "count": len(data)}
 @app.get("/all-properties")
-def get_cached_properties(user_id: str = None):
+def get_cached_properties(user_id: Optional[str] = Query(default=None)):
     data = property_cache.get("all")
     if data is None:
         return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
-    # return {
-    #     "properties": data["properties"],
-    #     "districts": data["districts"],
-    #     "property_count": len(data["properties"]),
-    #     "district_count": len(data["districts"])
-    # }
+
     response = {
         "properties": data["properties"],
         "districts": data["districts"],
@@ -182,12 +129,17 @@ def get_cached_properties(user_id: str = None):
         "district_count": len(data["districts"]),
     }
     # ✅ اگر user_id فرستاده شده بود، فیلترهای کاربر رو هم برگردون
-    if user_id:
-        filters = user_filters_cache.get(user_id)
-        if filters:
-            response["user_filters"] = filters
-        else:
-            response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
+    # if user_id:
+    #     filters = user_filters_cache.get(user_id)
+    #     if filters:
+    #         response["user_filters"] = filters
+    #     else:
+    #         response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
+    if user_id and user_id.strip():
+        filters = user_filters_cache.get(user_id.strip())
+        response["user_filters"] = filters if filters else None
+    else:
+        response["user_filters"] = None
             
     return response
 
