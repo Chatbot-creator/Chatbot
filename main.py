@@ -52,8 +52,6 @@ HEADERS = {
 
 # کش با زمان انقضای 24 ساعت (86400 ثانیه)
 property_cache = TTLCache(maxsize=1, ttl=86400)
-property_cache["partial"] = {"properties": [], "districts": {}}
-property_cache["all"] = None
 user_filters_cache = TTLCache(maxsize=10000, ttl=3600)
 # user_filters_cache = {}
 # def fetch_all_properties():
@@ -94,7 +92,6 @@ def fetch_all_properties():
     limit = 100
 
     while True:
-        
         print(f"📄 در حال پردازش صفحه {page}...")
         res = requests.post(f"{ESTATY_API_URL}/getProperties", json={"page": page, "limit": limit}, headers=HEADERS)
         json_data = res.json()
@@ -114,14 +111,6 @@ def fetch_all_properties():
                 if name and district_id and name not in districts_with_ids:
                     districts_with_ids[name] = district_id
 
-
-        # ✅ 🔥 هر بار بعد از یک صفحه، کش موقتی رو آپدیت کن
-        property_cache["partial"] = {
-            "properties": list(all_properties),
-            "districts": dict(districts_with_ids)
-        }
-
-
         if len(current_data) < 12:
             print("✅ به آخر لیست رسیدیم.")
             break
@@ -131,16 +120,11 @@ def fetch_all_properties():
     print(f"✅ Total fetched properties: {len(all_properties)}")
     print(f"✅ Total districts: {len(districts_with_ids)}")
 
-    property_cache["all"] = {
+    # ✅ بازگرداندن یک دیکشنری شامل هر دو
+    return {
         "properties": all_properties,
         "districts": districts_with_ids
     }
-
-    # # ✅ بازگرداندن یک دیکشنری شامل هر دو
-    # return {
-    #     "properties": all_properties,
-    #     "districts": districts_with_ids
-    # }
 
 # def fetch_and_cache_properties():
 #     all_props = fetch_all_properties()
@@ -148,12 +132,11 @@ def fetch_all_properties():
 #     print(f"🕓 Property cache updated at {datetime.now()}")
 #     print(f"✅ {len(all_props)} ملک ذخیره شد.")
 def fetch_and_cache_properties():
-    fetch_all_properties()
-    # result = fetch_all_properties()
-    # property_cache["all"] = result
+    result = fetch_all_properties()
+    property_cache["all"] = result
     print(f"🕓 Property cache updated at {datetime.now()}")
-    # print(f"✅ {len(result['properties'])} ملک ذخیره شد.")
-    # print(f"✅ {len(result['districts'])} منطقه ذخیره شد.")
+    print(f"✅ {len(result['properties'])} ملک ذخیره شد.")
+    print(f"✅ {len(result['districts'])} منطقه ذخیره شد.")
 
 
 scheduler = BackgroundScheduler()
@@ -167,8 +150,8 @@ def start_scheduler():
 from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    threading.Thread(target=fetch_and_cache_properties).start()
-    # fetch_and_cache_properties() 
+    # threading.Thread(target=fetch_and_cache_properties).start()
+    fetch_and_cache_properties() 
     start_scheduler()
     yield
 
@@ -181,42 +164,44 @@ app = FastAPI(lifespan=lifespan)
 #     if data is None:
 #         return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
 #     return {"properties": data, "count": len(data)}
-@app.get("/all-properties")
-def get_cached_properties(user_id: str = None):
-    full_data = property_cache.get("all")
-    partial_data = property_cache.get("partial")
-
-    if full_data:
-        source = full_data
-        cached = True
-    elif partial_data:
-        source = partial_data
-        cached = False
-    else:
-    # data = property_cache.get("all")
-    # if data is None:
-        return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
-    # return {
-    #     "properties": data["properties"],
-    #     "districts": data["districts"],
-    #     "property_count": len(data["properties"]),
-    #     "district_count": len(data["districts"])
-    # }
-    response = {
-        "properties": source["properties"],
-        "districts": source["districts"],
-        "property_count": len(source["properties"]),
-        "district_count": len(source["districts"]),
-    }
-    # ✅ اگر user_id فرستاده شده بود، فیلترهای کاربر رو هم برگردون
-    if user_id:
-        filters = user_filters_cache.get(user_id)
-        if filters:
-            response["user_filters"] = filters
-        else:
-            response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
+# @app.get("/all-properties")
+# def get_cached_properties(user_id: str = None):
+#     data = property_cache.get("all")
+#     if data is None:
+#         return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
+#     # return {
+#     #     "properties": data["properties"],
+#     #     "districts": data["districts"],
+#     #     "property_count": len(data["properties"]),
+#     #     "district_count": len(data["districts"])
+#     # }
+#     response = {
+#         "properties": data["properties"],
+#         "districts": data["districts"],
+#         "property_count": len(data["properties"]),
+#         "district_count": len(data["districts"]),
+#     }
+#     # ✅ اگر user_id فرستاده شده بود، فیلترهای کاربر رو هم برگردون
+#     if user_id:
+#         filters = user_filters_cache.get(user_id)
+#         if filters:
+#             response["user_filters"] = filters
+#         else:
+#             response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
             
-    return response
+#     return response
+
+@app.get("/all-properties")
+def get_cached_properties():
+    data = property_cache.get("all")
+    if data is None:
+        return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
+    return {
+        "properties": data["properties"],
+        "districts": data["districts"],
+        "property_count": len(data["properties"]),
+        "district_count": len(data["districts"])
+    }
 
 #----------------------------------------------------------------------Bot
 import random
