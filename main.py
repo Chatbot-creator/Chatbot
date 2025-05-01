@@ -18,8 +18,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi.responses import JSONResponse
 import copy
-from typing import Optional
-from fastapi import Query
 
 
 properties_cache = TTLCache(maxsize=10000, ttl=3600)
@@ -100,7 +98,6 @@ def fetch_and_cache_properties():
 
 
 scheduler = BackgroundScheduler()
-import threading
 
 def start_scheduler():
     scheduler.add_job(fetch_and_cache_properties, "interval", hours=24)
@@ -110,23 +107,15 @@ def start_scheduler():
 from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # fetch_and_cache_properties() 
-    # start_scheduler()
+    fetch_and_cache_properties() 
+    start_scheduler()
     yield
-
-
-    def start_background_tasks():
-        fetch_and_cache_properties()
-        start_scheduler()
-
-    threading.Thread(target=start_background_tasks).start()
 
 app = FastAPI(lifespan=lifespan)
 
 
-
 @app.get("/all-properties")
-def get_cached_properties(user_id: Optional[str] = Query(default=None)):
+def get_cached_properties(user_id: str = None):
     data = property_cache.get("all")
     if data is None:
         return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
@@ -138,17 +127,12 @@ def get_cached_properties(user_id: Optional[str] = Query(default=None)):
         "district_count": len(data["districts"]),
     }
     # ✅ اگر user_id فرستاده شده بود، فیلترهای کاربر رو هم برگردون
-    # if user_id:
-    #     filters = user_filters_cache.get(user_id)
-    #     if filters:
-    #         response["user_filters"] = filters
-    #     else:
-    #         response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
-    if user_id and user_id.strip():
-        filters = user_filters_cache.get(user_id.strip())
-        response["user_filters"] = filters if filters else None
-    else:
-        response["user_filters"] = None
+    if user_id:
+        filters = user_filters_cache.get(user_id)
+        if filters:
+            response["user_filters"] = filters
+        else:
+            response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
             
     return response
 
