@@ -105,28 +105,9 @@ def start_scheduler():
 from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("⚙️ اپلیکیشن در حال راه‌اندازی است...")
-    yield  # FastAPI آماده‌ی پاسخ‌دهی میشه
-
-    # بعد از اجرای کامل اپ، کش و scheduler رو async اجرا کن
-    try:
-        loop = asyncio.get_event_loop()
-        loop.create_task(async_fill_cache())
-    except Exception as e:
-        print("❌ خطا در اجرای کش بعد از yield:", e)
-
-async def async_fill_cache():
-    try:
-        await asyncio.to_thread(fetch_and_cache_properties)
-        await asyncio.to_thread(start_scheduler)
-        print("✅ کش و scheduler راه افتادن")
-    except Exception as e:
-        print("❌ خطا داخل async_fill_cache:", e)
-        
-# async def lifespan(app: FastAPI):
-#     fetch_and_cache_properties() 
-#     start_scheduler()
-#     yield
+    # fetch_and_cache_properties() 
+    # start_scheduler()
+    yield
 
 app = FastAPI(lifespan=lifespan)
 
@@ -136,7 +117,8 @@ app = FastAPI(lifespan=lifespan)
 def get_cached_properties():
     data = property_cache.get("all")
     if data is None:
-        return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
+        # return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
+        return {"status": "empty_cache", "msg": "کش پر نشده هنوز"}
     return {
         "properties": data["properties"],
         "districts": data["districts"],
