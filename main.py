@@ -107,6 +107,12 @@ from contextlib import asynccontextmanager
 async def lifespan(app: FastAPI):
     # fetch_and_cache_properties() 
     # start_scheduler()
+        # نمونه‌ی تستی فقط برای جلوگیری از crash
+    property_cache["all"] = {
+        "properties": [],
+        "districts": {}
+    }
+    print("✅ کش mock مقداردهی شد")
     yield
 
 app = FastAPI(lifespan=lifespan)
