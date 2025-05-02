@@ -105,14 +105,8 @@ def start_scheduler():
 from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # fetch_and_cache_properties() 
-    # start_scheduler()
-        # نمونه‌ی تستی فقط برای جلوگیری از crash
-    property_cache["all"] = {
-        "properties": [],
-        "districts": {}
-    }
-    print("✅ کش mock مقداردهی شد")
+    fetch_and_cache_properties() 
+    start_scheduler()
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -123,8 +117,8 @@ app = FastAPI(lifespan=lifespan)
 def get_cached_properties():
     data = property_cache.get("all")
     if data is None:
-        # return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
-        return {"status": "empty_cache", "msg": "کش پر نشده هنوز"}
+        return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
+        # return {"status": "empty_cache", "msg": "کش پر نشده هنوز"}
     return {
         "properties": data["properties"],
         "districts": data["districts"],
