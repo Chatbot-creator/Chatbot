@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 import copy
 
 
-properties_cache = TTLCache(maxsize=10000, ttl=3600)
+
 
 
 load_dotenv()
@@ -41,9 +41,7 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-# کش با زمان انقضای 24 ساعت (86400 ثانیه)
-property_cache = TTLCache(maxsize=1, ttl=86400)
-user_filters_cache = TTLCache(maxsize=10000, ttl=3600)
+
 
 def fetch_all_properties():
     print("🚀 شروع دریافت املاک از API...")
@@ -143,6 +141,10 @@ def get_cached_properties():
             
     # return response
 
+# کش با زمان انقضای 24 ساعت (86400 ثانیه)
+properties_cache = TTLCache(maxsize=10000, ttl=3600)
+property_cache = TTLCache(maxsize=1, ttl=86400)
+user_filters_cache = TTLCache(maxsize=10000, ttl=3600)
 #----------------------------------------------------------------------Bot
 import random
 # memory_state = {}
