@@ -43,104 +43,103 @@ HEADERS = {
 
 
 
-# def fetch_all_properties():
-#     print("🚀 شروع دریافت املاک از API...")
-#     all_properties = []
-#     districts_with_ids = {}  # ✅ دیکشنری منطقه‌ها
+def fetch_all_properties():
+    print("🚀 شروع دریافت املاک از API...")
+    all_properties = []
+    districts_with_ids = {}  # ✅ دیکشنری منطقه‌ها
 
-#     page = 1
-#     limit = 100
+    page = 1
+    limit = 100
 
-#     while True:
-#         print(f"📄 در حال پردازش صفحه {page}...")
-#         res = requests.post(f"{ESTATY_API_URL}/getProperties", json={"page": page, "limit": limit}, headers=HEADERS)
-#         json_data = res.json()
+    while True:
+        print(f"📄 در حال پردازش صفحه {page}...")
+        res = requests.post(f"{ESTATY_API_URL}/getProperties", json={"page": page, "limit": limit}, headers=HEADERS)
+        json_data = res.json()
 
-#         current_data = json_data.get("properties", {}).get("data", [])
-#         if not current_data:
-#             break
+        current_data = json_data.get("properties", {}).get("data", [])
+        if not current_data:
+            break
 
-#         all_properties.extend(current_data)
+        all_properties.extend(current_data)
 
-#         # ✅ استخراج نام و ID منطقه از هر ملک
-#         for prop in current_data:
-#             district_info = prop.get("district")
-#             if district_info and isinstance(district_info, dict):
-#                 name = district_info.get("name", "").strip()
-#                 district_id = district_info.get("id")
-#                 if name and district_id and name not in districts_with_ids:
-#                     districts_with_ids[name] = district_id
+        # ✅ استخراج نام و ID منطقه از هر ملک
+        for prop in current_data:
+            district_info = prop.get("district")
+            if district_info and isinstance(district_info, dict):
+                name = district_info.get("name", "").strip()
+                district_id = district_info.get("id")
+                if name and district_id and name not in districts_with_ids:
+                    districts_with_ids[name] = district_id
 
-#         if len(current_data) < 12:
-#             print("✅ به آخر لیست رسیدیم.")
-#             break
+        if len(current_data) < 12:
+            print("✅ به آخر لیست رسیدیم.")
+            break
 
-#         page += 1
+        page += 1
 
-#     print(f"✅ Total fetched properties: {len(all_properties)}")
-#     print(f"✅ Total districts: {len(districts_with_ids)}")
+    print(f"✅ Total fetched properties: {len(all_properties)}")
+    print(f"✅ Total districts: {len(districts_with_ids)}")
 
-#     # ✅ بازگرداندن یک دیکشنری شامل هر دو
-#     return {
-#         "properties": all_properties,
-#         "districts": districts_with_ids
-#     }
-
-
-# def fetch_and_cache_properties():
-#     result = fetch_all_properties()
-#     property_cache["all"] = result
-#     print(f"🕓 Property cache updated at {datetime.now()}")
-#     print(f"✅ {len(result['properties'])} ملک ذخیره شد.")
-#     print(f"✅ {len(result['districts'])} منطقه ذخیره شد.")
+    # ✅ بازگرداندن یک دیکشنری شامل هر دو
+    return {
+        "properties": all_properties,
+        "districts": districts_with_ids
+    }
 
 
-# scheduler = BackgroundScheduler()
-
-# def start_scheduler():
-#     scheduler.add_job(fetch_and_cache_properties, "interval", hours=24)
-#     scheduler.start()
-#     print("📅 Scheduler every 24h started.")
-
-# from contextlib import asynccontextmanager
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     fetch_and_cache_properties() 
-#     start_scheduler()
-#     yield
-
-# app = FastAPI(lifespan=lifespan)
-app = FastAPI()
+def fetch_and_cache_properties():
+    result = fetch_all_properties()
+    property_cache["all"] = result
+    print(f"🕓 Property cache updated at {datetime.now()}")
+    print(f"✅ {len(result['properties'])} ملک ذخیره شد.")
+    print(f"✅ {len(result['districts'])} منطقه ذخیره شد.")
 
 
-# @app.get("/all-properties")
-# # def get_cached_properties(user_id: str = None):
-# def get_cached_properties():
-#     data = property_cache.get("all")
-#     if data is None:
-#         return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
-#     return {
-#         "properties": data["properties"],
-#         "districts": data["districts"],
-#         "property_count": len(data["properties"]),
-#         "district_count": len(data["districts"])
-#     }
+scheduler = BackgroundScheduler()
 
-#     # response = {
-#     #     "properties": data["properties"],
-#     #     "districts": data["districts"],
-#     #     "property_count": len(data["properties"]),
-#     #     "district_count": len(data["districts"]),
-#     # }
-#     # # ✅ اگر user_id فرستاده شده بود، فیلترهای کاربر رو هم برگردون
-#     # if user_id:
-#     #     filters = user_filters_cache.get(user_id)
-#     #     if filters:
-#     #         response["user_filters"] = filters
-#     #     else:
-#     #         response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
+def start_scheduler():
+    scheduler.add_job(fetch_and_cache_properties, "interval", hours=24)
+    scheduler.start()
+    print("📅 Scheduler every 24h started.")
+
+from contextlib import asynccontextmanager
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    fetch_and_cache_properties() 
+    start_scheduler()
+    yield
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/all-properties")
+# def get_cached_properties(user_id: str = None):
+def get_cached_properties():
+    data = property_cache.get("all")
+    if data is None:
+        return JSONResponse(content={"detail": "No data cached yet."}, status_code=404)
+    return {
+        "properties": data["properties"],
+        "districts": data["districts"],
+        "property_count": len(data["properties"]),
+        "district_count": len(data["districts"])
+    }
+
+    # response = {
+    #     "properties": data["properties"],
+    #     "districts": data["districts"],
+    #     "property_count": len(data["properties"]),
+    #     "district_count": len(data["districts"]),
+    # }
+    # # ✅ اگر user_id فرستاده شده بود، فیلترهای کاربر رو هم برگردون
+    # if user_id:
+    #     filters = user_filters_cache.get(user_id)
+    #     if filters:
+    #         response["user_filters"] = filters
+    #     else:
+    #         response["user_filters"] = None  # اگر فیلتر نداشت، مقدار None بده
             
-#     # return response
+    # return response
 
 # کش با زمان انقضای 24 ساعت (86400 ثانیه)
 properties_cache = TTLCache(maxsize=10000, ttl=3600)
@@ -4360,9 +4359,9 @@ import uuid
 
 app.add_middleware(
     SessionMiddleware,
-    secret_key="rAMWy-eYU-rOQt2p0A2ji-sjZTu8HbpGW6gi9MkI2vg",
-    session_cookie="session_id",
-    https_only=True,          # چون HTTPS واقعی داری
+    secret_key="rAMWy-eYU-rOQt2p0A2ji-sjZTu8HlpGW6gi9MkI2vg",
+    session_cookie="trunest_session",
+    https_only=False,          # چون HTTPS واقعی داری
     same_site="lax",           # بهتره داشته باشی
     max_age=3600              # عمر ۱ روزه برای session
 )
