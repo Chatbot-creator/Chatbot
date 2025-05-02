@@ -105,9 +105,28 @@ def start_scheduler():
 from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    fetch_and_cache_properties() 
-    start_scheduler()
-    yield
+    print("⚙️ اپلیکیشن در حال راه‌اندازی است...")
+    yield  # FastAPI آماده‌ی پاسخ‌دهی میشه
+
+    # بعد از اجرای کامل اپ، کش و scheduler رو async اجرا کن
+    try:
+        loop = asyncio.get_event_loop()
+        loop.create_task(async_fill_cache())
+    except Exception as e:
+        print("❌ خطا در اجرای کش بعد از yield:", e)
+
+async def async_fill_cache():
+    try:
+        await asyncio.to_thread(fetch_and_cache_properties)
+        await asyncio.to_thread(start_scheduler)
+        print("✅ کش و scheduler راه افتادن")
+    except Exception as e:
+        print("❌ خطا داخل async_fill_cache:", e)
+        
+# async def lifespan(app: FastAPI):
+#     fetch_and_cache_properties() 
+#     start_scheduler()
+#     yield
 
 app = FastAPI(lifespan=lifespan)
 
