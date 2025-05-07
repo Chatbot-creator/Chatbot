@@ -1,0 +1,13 @@
+{
+  "Tests/test_auth.py::test_register_user": true,
+  "Tests/test_auth.py::test_register_duplicate_user": true,
+  "Tests/test_auth.py::test_login_user": true,
+  "Tests/test_auth.py::test_get_me_with_token": true,
+  "Tests/test_auth.py::test_logout": true,
+  "Tests/test_chatbot.py::test_chatbot_message": true,
+  "Tests/test_chatbot.py::test_get_properties": true,
+  "Tests/test_session.py::test_get_session_without_cookie": true,
+  "Tests/test_session.py::test_get_session_with_cookie": true,
+  "Tests/test_session.py::test_get_session_by_id": true,
+  "Tests/test_simple.py::test_failing": true
+}
