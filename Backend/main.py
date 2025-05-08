@@ -13,8 +13,9 @@ from App.routers import router as app_router
 from App.properties.models import Property
 from App.properties.routes import convert_to_original_format  # یا هر کجا که این تابع هست
 from App.properties.scheduler import initialize_scheduler, stop_scheduler
-from App.chatbot.cache import fetch_and_cache_properties as fetch_chatbot_cache
-from App.chatbot.cache import start_scheduler as start_chatbot_scheduler
+from App.chatbot.chatbot_code import real_estate_chatbot
+from App.chatbot.chatbot_code import ChatRequest
+
 
 # بارگذاری env
 load_dotenv("config.env")
@@ -73,8 +74,8 @@ async def lifespan(app: FastAPI):
     initialize_scheduler()           # 📅 برای API اصلی
     fetch_and_cache_properties()     # 🏘 برای املاک
     start_scheduler()                # ⏱ برای املاک
-    fetch_chatbot_cache()            # 🤖 کش چت‌بات
-    start_chatbot_scheduler()        # 🤖 زمانبند چت‌بات
+    # fetch_chatbot_cache()            # 🤖 کش چت‌بات
+    # start_chatbot_scheduler()        # 🤖 زمانبند چت‌بات
     yield
     stop_scheduler()
 
@@ -113,6 +114,32 @@ def get_cached_properties():
         "property_count": len(data["properties"]),
         "district_count": len(data["districts"])
     }
+
+
+# ✅ مسیر API برای چت‌بات
+@app.post("/chatbot")
+async def chat(request: ChatRequest):
+
+    user_message = request.message.strip()
+
+    # ✅ **۱. اگر چت‌بات برای اولین بار باز شود، پیام خوش‌آمدگویی ارسال کند**
+    if not user_message:
+        welcome_message = """
+            <div style="text-align: right; direction: rtl; background-color: #e6f7ff; padding: 12px; border-radius: 10px; border: 1px solid #b3d8ff;">
+                <p style="margin-top: 0; font-weight: bold; font-size: 16px;">👋 به چت‌بات مشاور املاک <span style="color: #000000;">شرکت ترونست</span> خوش آمدید!</p>
+                <p style="margin: 6px 0;">من اینجا هستم تا به شما در پیدا کردن <b>بهترین املاک در دبی</b> کمک کنم. 🏡✨</p>
+                <hr style="border-top: 1px solid #ccc;">
+                <p style="margin-bottom: 0;"><b>چطور می‌توانم کمکتان کنم؟</b></p>
+            </div>
+            """
+
+        return {"response": welcome_message}
+
+
+    """ دریافت پیام کاربر و ارسال پاسخ از طریق هوش مصنوعی """
+    bot_response = await real_estate_chatbot(request.message)
+    return {"response": bot_response}
+
 
 # ✅ اتصال روت‌ها
 app.include_router(app_router, prefix="/api")
