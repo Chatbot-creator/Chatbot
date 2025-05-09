@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any, List
 
 from App.database import SessionLocal
 from App.properties.service import update_properties_from_api
-from App.properties.service import update_filtered_properties_from_api
+from App.properties.service import update_filtered_properties_from_api, enrich_filtered_properties_from_api
 
 
 # تنظیم لاگر
@@ -88,6 +88,9 @@ async def scheduled_task():
 
             # ▶️ به‌روزرسانی دیتای فیلتر شده
             result_filtered = await update_filtered_properties_from_api(db)
+
+            # ▶️ تکمیل داده‌های اضافی برای فیلتر شده‌ها
+            await enrich_filtered_properties_from_api(db)
 
             # ذخیره در تاریخچه
             execution_history.append({
