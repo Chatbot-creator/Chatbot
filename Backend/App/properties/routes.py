@@ -1068,13 +1068,27 @@ async def filter_properties_route(
                 if str(p.get("post_delivery")) not in filter_params.post_delivery:
                     continue
 
+            # if filter_params.delivery_date:
+            #     try:
+            #         g_date = convert_jalali_to_gregorian(filter_params.delivery_date)
+            #         if g_date and p.get("delivery_date") != g_date:
+            #             continue
+            #     except Exception as e:
+            #         print("❌ delivery_date conversion error:", e)
+            #         continue
+
             if filter_params.delivery_date:
                 try:
-                    g_date = convert_jalali_to_gregorian(filter_params.delivery_date)
-                    if g_date and p.get("delivery_date") != g_date:
-                        continue
+                    # دریافت فقط ماه و سال از ورودی میلادی
+                    parts = filter_params.delivery_date.strip().split("/")
+                    if len(parts) >= 2:
+                        year = parts[0]
+                        month = parts[1]
+                        input_month_year = f"{month}/{year}"
+                        if input_month_year != p.get("delivery_date"):
+                            continue
                 except Exception as e:
-                    print("❌ delivery_date conversion error:", e)
+                    print("❌ delivery_date parsing error:", e)
                     continue
 
             if filter_params.facilities:
