@@ -952,7 +952,7 @@ async def filter_properties_route(
             "title": raw.get("title") or prop.title,
             "description": raw.get("description"),
             "cover": raw.get("cover"),
-            "address_text": raw.get("address_text"),
+            "address": raw.get("address"),
             "delivery_date": prop.delivery_date,
             "updated_at": raw.get("updated_at") or (prop.updated_at.isoformat() if prop.updated_at else None),
             "fetched_at": prop.fetched_at.isoformat() if prop.fetched_at else None,
