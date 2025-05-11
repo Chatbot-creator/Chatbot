@@ -495,43 +495,43 @@ async def get_latest_updated_properties(db: Session = Depends(get_db)):
 #     return {"property": prop_dict}
 
 
-@router.post("/get-property", response_model=SinglePropertyWrapper)
-async def get_single_property(data: SinglePropertyParams, db: Session = Depends(get_db)):
-    """
-    دریافت اطلاعات کامل یک ملک با شناسه.
+# @router.post("/get-property", response_model=SinglePropertyWrapper)
+# async def get_single_property(data: SinglePropertyParams, db: Session = Depends(get_db)):
+#     """
+#     دریافت اطلاعات کامل یک ملک با شناسه.
 
-    اگر ملک در دیتابیس لوکال نبود، از API می‌گیرد و ذخیره می‌کند.
-    سپس خروجی با ساختار دقیق مشابه API اصلی بازمی‌گردد.
-    """
-    property_id = data.id
-    property_item = db.query(Property).filter(Property.property_id == str(property_id)).first()
+#     اگر ملک در دیتابیس لوکال نبود، از API می‌گیرد و ذخیره می‌کند.
+#     سپس خروجی با ساختار دقیق مشابه API اصلی بازمی‌گردد.
+#     """
+#     property_id = data.id
+#     property_item = db.query(Property).filter(Property.property_id == str(property_id)).first()
 
-    if not property_item:
-        api_property = await fetch_single_property(property_id)
-        if not api_property:
-            raise HTTPException(status_code=404, detail="ملک مورد نظر یافت نشد")
+#     if not property_item:
+#         api_property = await fetch_single_property(property_id)
+#         if not api_property:
+#             raise HTTPException(status_code=404, detail="ملک مورد نظر یافت نشد")
         
-        processed_data = process_property_data(api_property)
-        new_property = Property(**processed_data)
-        db.add(new_property)
-        db.commit()
-        db.refresh(new_property)
-        property_item = new_property
+#         processed_data = process_property_data(api_property)
+#         new_property = Property(**processed_data)
+#         db.add(new_property)
+#         db.commit()
+#         db.refresh(new_property)
+#         property_item = new_property
 
-    # اگر داده‌های مهم ناقص بودن، یک بار دیگه fetch کنیم
-    result = convert_to_original_format_single(property_item)
-    critical_keys = [
-        "description", "payment_plan", "grouped_apartments", 
-        "payment_plans", "property_images", "property_facilities"
-    ]
-    if any(result.get(key) in (None, [], "") for key in critical_keys):
-        fresh_data = await fetch_single_property(property_id)
-        if fresh_data:
-            property_item.raw_data = json.dumps(fresh_data)
-            db.commit()
-            result = convert_to_original_format_single(property_item)
+#     # اگر داده‌های مهم ناقص بودن، یک بار دیگه fetch کنیم
+#     result = convert_to_original_format_single(property_item)
+#     critical_keys = [
+#         "description", "payment_plan", "grouped_apartments", 
+#         "payment_plans", "property_images", "property_facilities"
+#     ]
+#     if any(result.get(key) in (None, [], "") for key in critical_keys):
+#         fresh_data = await fetch_single_property(property_id)
+#         if fresh_data:
+#             property_item.raw_data = json.dumps(fresh_data)
+#             db.commit()
+#             result = convert_to_original_format_single(property_item)
 
-    return {"property": result}
+#     return {"property": result}
 
 
 def recursive_json_decode(data):
