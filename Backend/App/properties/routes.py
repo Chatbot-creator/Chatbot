@@ -1012,9 +1012,29 @@ async def filter_properties_route(
             if filter_params.max_price is not None and p["low_price"] > filter_params.max_price:
                 continue
 
+            # if filter_params.property_type:
+            #     name = p.get("property_type", {}).get("name", "").lower()
+            #     if name not in [t.lower() for t in filter_params.property_type]:
+                    # continue
+            property_type_mapping = {
+                "20": "Residential",
+                "3": "Commercial"
+            }
+
             if filter_params.property_type:
+                # تبدیل idها به name
+                normalized_filter_types = []
+                for t in filter_params.property_type:
+                    # اگر مقدار ورودی عددی باشد، از mapping استفاده کن
+                    str_t = str(t)
+                    if str_t in property_type_mapping:
+                        normalized_filter_types.append(property_type_mapping[str_t].lower())
+                    else:
+                        normalized_filter_types.append(str_t.lower())
+
+                # دریافت name از property
                 name = p.get("property_type", {}).get("name", "").lower()
-                if name not in [t.lower() for t in filter_params.property_type]:
+                if name not in normalized_filter_types:
                     continue
 
             if filter_params.district_id:
