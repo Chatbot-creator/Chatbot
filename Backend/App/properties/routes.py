@@ -992,7 +992,9 @@ async def filter_properties_route(
             "guarantee_rental_guarantee_value": raw.get("guarantee_rental_guarantee_value"),
             "downPayment": raw.get("downPayment")
         }
-
+    if not result.get("properties"):
+        return {"properties": [], "total": 0}
+        
     raw_properties = []
     for p in result["properties"]:
         try:
