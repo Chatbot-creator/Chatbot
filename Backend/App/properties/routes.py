@@ -923,9 +923,27 @@ def convert_jalali_to_gregorian(jalali_str: str) -> str:
 #         "properties": filtered,
 #         "total": len(filtered)
 #     }
+
+
+from fastapi import Body
+
+def clean_filter_params(raw_body: dict = Body(...)) -> FilterParams:
+    """
+    حذف کلیدهایی که با [] میان مثل payment_plan[] و تبدیلشون به payment_plan
+    """
+    cleaned = {}
+    for key, val in raw_body.get("filter_params", {}).items():
+        if key.endswith("[]"):
+            cleaned[key[:-2]] = val
+        else:
+            cleaned[key] = val
+    return FilterParams(**cleaned)
+
+
 @router.post("/filter")
 async def filter_properties_route(
-    filter_params: FilterParams,
+    # filter_params: FilterParams,
+    filter_params: FilterParams = Depends(clean_filter_params),
     sorting_params: SortingParams = SortingParams(),
     skip: int = Query(0, description="تعداد آیتم‌های رد شده برای صفحه‌بندی"),
     limit: int = Query(10000, description="حداکثر تعداد آیتم‌های بازگشتی"),
