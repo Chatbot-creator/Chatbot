@@ -1118,7 +1118,6 @@ async def filter_properties_route(
 
 
 
-
 # @router.post("/filter", response_model=Dict[str, Any])
 # async def filter_properties_route(
 #     filter_params: FilterParams,

@@ -419,6 +419,12 @@ class FilteredProperty(Base):
     raw_data = Column(JSON, nullable=False)
     fetched_at = Column(DateTime, default=datetime.utcnow)
 
+    # ستون‌های جدید برای داده‌های اضافی
+    property_type = Column(String, nullable=True)
+    payment_plan = Column(Integer, nullable=True)
+    post_delivery = Column(Integer, nullable=True)
+    property_facilities = Column(JSON, nullable=True) 
+    delivery_date = Column(String, nullable=True)
 
 async def save_filtered_properties_to_db(db: Session, properties_data: List[Dict[str, Any]]) -> int:
     from sqlalchemy.exc import IntegrityError
@@ -452,6 +458,63 @@ async def save_filtered_properties_to_db(db: Session, properties_data: List[Dict
     logger.info(f"🎯 {saved} ملک فیلتر شده ذخیره شد.")
     return saved
 
+
+
+async def enrich_filtered_properties_from_api(db: Session):
+    """
+    گرفتن اطلاعات تکمیلی برای تمام property_idها و ذخیره در ستون‌های اختصاصی جدول فیلتر شده.
+    """
+    updated = 0
+    try:
+        all_props = db.query(FilteredProperty).all()
+
+        for item in all_props:
+            try:
+                fresh_data = await fetch_single_property(int(item.property_id))
+                if not fresh_data:
+                    continue
+
+                # استخراج فیلدهای مورد نظر از پاسخ API
+                # بررسی امن برای property_type
+                if isinstance(fresh_data.get("property_type"), dict):
+                    item.property_type = fresh_data["property_type"].get("name")
+
+                # بررسی امن برای payment_plan و post_delivery
+                item.payment_plan = int(fresh_data.get("payment_plan")) if fresh_data.get("payment_plan") is not None else None
+                item.post_delivery = int(fresh_data.get("post_delivery")) if fresh_data.get("post_delivery") is not None else None
+
+                # بررسی امن برای property_facilities (باید JSON باشد)
+                if isinstance(fresh_data.get("property_facilities"), list):
+                    item.property_facilities = fresh_data["property_facilities"]
+
+                # delivery_date همانطور که هست خوب کار می‌کند
+                item.delivery_date = fresh_data.get("delivery_date")
+
+                print({
+                    "id": item.property_id,
+                    "property_type": item.property_type,
+                    "payment_plan": item.payment_plan,
+                    "post_delivery": item.post_delivery,
+                    "delivery_date": item.delivery_date
+                })
+
+                db.add(item)
+                db.commit()
+                updated += 1
+
+            except Exception as e:
+                db.rollback()
+                logger.warning(f"❌ خطا در به‌روزرسانی ملک {item.property_id}: {str(e)}")
+
+        # db.commit()
+        logger.info(f"✅ {updated} ملک با اطلاعات تکمیلی به‌روزرسانی شد.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ خطای کلی در enrich_filtered_properties_from_api: {str(e)}")
+
+
+
+
 async def update_filtered_properties_from_api(db: Session) -> Dict[str, Any]:
     """
     واکشی همه املاک با فیلتر خالی و ذخیره در جدول جداگانه (FilteredProperty).
@@ -476,6 +539,8 @@ async def update_filtered_properties_from_api(db: Session) -> Dict[str, Any]:
 
         properties_data = result["properties"]
         saved_count = await save_filtered_properties_to_db(db, properties_data)
+
+        await enrich_filtered_properties_from_api(db)
 
         return {
             "success": True,
@@ -543,9 +608,9 @@ async def filter_properties_db(db: Session, filter_params: FilterParams,
     """
     query = db.query(FilteredProperty)
     
-    # # اعمال فیلترها
-    if filter_params.property_name:
-        query = query.filter(FilteredProperty.title.ilike(f"%{filter_params.property_name}%"))
+    # # # اعمال فیلترها
+    # if filter_params.property_name:
+    #     query = query.filter(FilteredProperty.title.ilike(f"%{filter_params.property_name}%"))
     
     # if filter_params.city_id:
     #     # جستجو در JSON ذخیره‌شده در فیلد raw_data
@@ -601,61 +666,100 @@ async def filter_properties_db(db: Session, filter_params: FilterParams,
     #         else:
     #             query = query.order_by(desc(FilteredProperty.created_at))
     
-    # فیلتر شهر
-    if filter_params.city_id:
-        city_filters = []
-        for city_id in filter_params.city_id:
-            city_filters.append(
-                func.json_extract(FilteredProperty.raw_data, "$.city.id") == city_id
-            )
-        if city_filters:
-            query = query.filter(or_(*city_filters))
+    # # فیلتر شهر
+    # if filter_params.city_id:
+    #     city_filters = []
+    #     for city_id in filter_params.city_id:
+    #         city_filters.append(
+    #             func.json_extract(FilteredProperty.raw_data, "$.city.id") == city_id
+    #         )
+    #     if city_filters:
+    #         query = query.filter(or_(*city_filters))
 
-    # فیلتر قیمت
-    if filter_params.min_price is not None:
-        query = query.filter(
-            cast(func.json_extract(FilteredProperty.raw_data, "$.low_price"), Float) >= filter_params.min_price
-        )
-    if filter_params.max_price is not None:
-        query = query.filter(
-            cast(func.json_extract(FilteredProperty.raw_data, "$.low_price"), Float) <= filter_params.max_price
-        )
+    # # فیلتر قیمت
+    # if filter_params.min_price is not None:
+    #     query = query.filter(
+    #         cast(FilteredProperty.raw_data.op("->>")("low_price"), Float) >= filter_params.min_price
+    #     )
+    # if filter_params.max_price is not None:
+    #     query = query.filter(
+    #         cast(FilteredProperty.raw_data.op("->>")("low_price"), Float) <= filter_params.max_price
+    #     )
 
-    # فیلتر متراژ
-    if filter_params.min_area is not None:
-        query = query.filter(
-            cast(func.json_extract(FilteredProperty.raw_data, "$.min_area"), Float) >= filter_params.min_area
-        )
-    if filter_params.max_area is not None:
-        query = query.filter(
-            cast(func.json_extract(FilteredProperty.raw_data, "$.min_area"), Float) <= filter_params.max_area
-        )
+    # # فیلتر متراژ
+    # if filter_params.min_area is not None:
+    #     query = query.filter(
+    #         cast(FilteredProperty.raw_data.op("->>")("min_area"), Float) >= filter_params.min_area
+    #     )
+    # if filter_params.max_area is not None:
+    #     query = query.filter(
+    #         cast(FilteredProperty.raw_data.op("->>")("min_area"), Float) <= filter_params.max_area
+    #     )
 
-    # فیلتر نوع ملک
-    if filter_params.property_type:
-        type_filters = []
-        for prop_type in filter_params.property_type:
-            type_filters.append(
-                func.json_extract(FilteredProperty.raw_data, "$.property_type.name").ilike(f"%{prop_type}%")
-            )
-        if type_filters:
-            query = query.filter(or_(*type_filters))
+    # # فیلتر نوع ملک
+    # if filter_params.property_type:
+    #     type_filters = []
+    #     for ptype in filter_params.property_type:
+    #         type_filters.append(
+    #             FilteredProperty.raw_data
+    #             .op("->")("property_type")
+    #             .op("->>")("name")
+    #             .ilike(f"%{ptype}%")
+    #         )
+    #     if type_filters:
+    #         query = query.filter(or_(*type_filters))
 
-    # مرتب‌سازی
-    if sorting_params.sorting_by:
-        sort_field, sort_dir = sorting_params.sorting_by.rsplit("_", 1)
+    # # مرتب‌سازی
+    # if sorting_params.sorting_by:
+    #     sort_field, sort_dir = sorting_params.sorting_by.rsplit("_", 1)
 
-        sort_map = {
-            "price": "$.low_price",
-            "area": "$.min_area",
-            "name": "$.title",
-            # "created_at": "$.created_at"
-        }
+    #     sort_map = {
+    #         "price": ("low_price", Float),
+    #         "area": ("min_area", Float),
+    #         "name": ("title", String)
+    #     }
 
-        json_path = sort_map.get(sort_field)
-        if json_path:
-            sort_expr = cast(func.json_extract(FilteredProperty.raw_data, json_path), Float if sort_field in ["price", "area"] else String)
-            query = query.order_by(asc(sort_expr) if sort_dir == "asc" else desc(sort_expr))
+    #     if sort_field in sort_map:
+    #         field, field_type = sort_map[sort_field]
+    #         sort_expr = cast(FilteredProperty.raw_data.op("->>")(field), field_type)
+    #         query = query.order_by(asc(sort_expr) if sort_dir == "asc" else desc(sort_expr))
+
+
+    # # # فیلتر متراژ
+    # # if filter_params.min_area is not None:
+    # #     query = query.filter(
+    # #         cast(func.json_extract(FilteredProperty.raw_data, "$.min_area"), Float) >= filter_params.min_area
+    # #     )
+    # # if filter_params.max_area is not None:
+    # #     query = query.filter(
+    # #         cast(func.json_extract(FilteredProperty.raw_data, "$.min_area"), Float) <= filter_params.max_area
+    # #     )
+
+    # # # فیلتر نوع ملک
+    # # if filter_params.property_type:
+    # #     type_filters = []
+    # #     for prop_type in filter_params.property_type:
+    # #         type_filters.append(
+    # #             func.json_extract(FilteredProperty.raw_data, "$.property_type.name").ilike(f"%{prop_type}%")
+    # #         )
+    # #     if type_filters:
+    # #         query = query.filter(or_(*type_filters))
+
+    # # # مرتب‌سازی
+    # # if sorting_params.sorting_by:
+    # #     sort_field, sort_dir = sorting_params.sorting_by.rsplit("_", 1)
+
+    # #     sort_map = {
+    # #         "price": "$.low_price",
+    # #         "area": "$.min_area",
+    # #         "name": "$.title",
+    # #         # "created_at": "$.created_at"
+    # #     }
+
+    # #     json_path = sort_map.get(sort_field)
+    # #     if json_path:
+    # #         sort_expr = cast(func.json_extract(FilteredProperty.raw_data, json_path), Float if sort_field in ["price", "area"] else String)
+    # #         query = query.order_by(asc(sort_expr) if sort_dir == "asc" else desc(sort_expr))
 
     # شمارش کل آیتم‌ها
     total = query.count()
