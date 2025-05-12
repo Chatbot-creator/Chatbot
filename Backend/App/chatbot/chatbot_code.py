@@ -31,6 +31,7 @@ import copy
 
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
+# api_key = "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"
 client = openai.OpenAI(api_key=api_key)
 
 

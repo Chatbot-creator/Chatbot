@@ -12,6 +12,7 @@ from App.properties.service import (
     fetch_latest_created_properties,
     fetch_latest_updated_properties,
     fetch_single_property,
+    FilteredProperty,
     fetch_filters,
     filter_properties,
     get_latest_created_properties_db,
@@ -201,6 +202,19 @@ def convert_to_original_format_single(prop: Property) -> dict:
         except json.JSONDecodeError:
             raw = {}
 
+    # تبدیل apartment به فرمت مورد نظر
+    apartment_list = []
+    if prop.apartment:  # اگر در مدل دیتابیس موجود باشد
+        try:
+            if isinstance(prop.apartment, str):
+                apartment_list = json.loads(prop.apartment)
+            elif isinstance(prop.apartment, (list, dict)):
+                apartment_list = prop.apartment
+        except json.JSONDecodeError:
+            pass
+    elif raw.get("apartment"):  # اگر در raw_data موجود باشد
+        apartment_list = raw.get("apartment")
+
     return {
         "id": raw.get("id") or int(prop.property_id),
         "city_id": raw.get("city_id"),
@@ -232,13 +246,13 @@ def convert_to_original_format_single(prop: Property) -> dict:
         "city": raw.get("city"),
         "district": raw.get("district"),
         "property_images": raw.get("property_images") or [],
-        "property_type": raw.get("property_type"),
         "property_facilities": raw.get("property_facilities") or [],
         "property_status": raw.get("property_status"),
         "sales_status": raw.get("sales_status"),
         "payment_plans": raw.get("payment_plans") or [],
         "created_at": prop.created_at.isoformat(),
-        "fetched_at": prop.fetched_at.isoformat()
+        "fetched_at": prop.fetched_at.isoformat(),
+        "apartment": apartment_list
     }
 
 # # روت برای دریافت جزئیات یک ملک با شناسه
@@ -267,8 +281,12 @@ def convert_to_original_format_single(prop: Property) -> dict:
 
 # @router.get("/{property_id}")
 
-
-
+from datetime import datetime
+def safe_int(val):
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return None
 
 @router.get("/{property_id}", response_model=SinglePropertyWrapper)
 async def get_property(property_id: str, db: Session = Depends(get_db)):
@@ -276,31 +294,119 @@ async def get_property(property_id: str, db: Session = Depends(get_db)):
     دریافت جزئیات یک ملک با شناسه مشخص.
 
     ابتدا ملک را از دیتابیس جستجو می‌کند. اگر موجود نباشد، خطای 404 باز می‌گرداند.
-    سپس داده‌ی خام (raw_data) را به ساختار استاندارد تبدیل می‌کند.
-    اگر برخی از فیلدهای کلیدی مقدار نداشته باشند، اطلاعات کامل ملک از API اصلی مجدداً واکشی شده،
-    در دیتابیس ذخیره می‌شود و نتیجه نهایی به کاربر بازگردانده می‌شود.
+    از همان دیتابیس فیلتر برای دریافت اطلاعات apartment استفاده می‌کند.
     """
-
+    # استفاده از همان کوئری دیتابیس که در فیلتر استفاده می‌شود
     prop = db.query(Property).filter(Property.property_id == property_id).first()
     if not prop:
         raise HTTPException(status_code=404, detail="ملک مورد نظر یافت نشد")
-    # تلاش برای تبدیل raw_data فعلی
-    result = convert_to_original_format_single(prop)
 
-    # بررسی اینکه آیا برخی فیلدهای مهم مقدار ندارند
-    critical_keys = [
-        "description", "payment_plan", "grouped_apartments", 
-        "payment_plans", "property_images", "property_facilities"
-    ]
-    missing_data = any(result.get(key) in (None, [], "") for key in critical_keys)
 
-    # اگر داده ناقص بود، مجدداً از API اصلی دریافت و جایگزین کن
-    if missing_data:
-        fresh_data = await fetch_single_property(int(property_id))
-        if fresh_data:
-            prop.raw_data = json.dumps(fresh_data)
-            db.commit()  # بروزرسانی در دیتابیس
-            result = convert_to_original_format_single(prop)  # مجدداً تبدیل با داده کامل
+    # 👇 گرفتن apartment از جدول فیلترشده
+    filtered_prop = db.query(FilteredProperty).filter(FilteredProperty.property_id == property_id).first()
+    apartment_data = []
+    if filtered_prop:
+        raw_filtered = filtered_prop.raw_data
+        if isinstance(raw_filtered, str):
+            try:
+                raw_filtered = json.loads(raw_filtered)
+            except json.JSONDecodeError:
+                raw_filtered = {}
+        apartment_data = raw_filtered.get("apartment", [])
+
+    # تبدیل raw_data به دیکشنری
+    raw = prop.raw_data
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            raw = {}
+
+    # استفاده از همان منطق تبدیل که در فیلتر استفاده می‌شود
+    result = {
+        "id": raw.get("id") or int(prop.property_id),
+        "city_id": raw.get("city_id"),
+        "developer_company_id": raw.get("developer_company_id"),
+        "property_type_id": raw.get("property_type_id"),
+        "district_id": raw.get("district_id"),
+        "title": raw.get("title") or prop.title,
+        "description": raw.get("description"),
+        "cover": raw.get("cover"),
+        "address": raw.get("address") or prop.address,
+        "address_text": raw.get("address_text"),
+        "apartment": apartment_data,
+        "delivery_date": raw.get("delivery_date"),
+        "property_status_id": raw.get("property_status_id"),
+        "sales_status_id": raw.get("sales_status_id"),
+        "completion_rate": raw.get("completion_rate"),
+        "residential_units": raw.get("residential_units"),
+        "commercial_units": raw.get("commercial_units"),
+        "payment_plan": safe_int(getattr(prop, "payment_plan", None)) or safe_int(raw.get("payment_plan")),
+        "post_delivery": safe_int(getattr(prop, "post_delivery", None)) or safe_int(raw.get("post_delivery")),
+        "payment_minimum_down_payment": raw.get("payment_minimum_down_payment"),
+        "guarantee_rental_guarantee": raw.get("guarantee_rental_guarantee"),
+        "guarantee_rental_guarantee_value": raw.get("guarantee_rental_guarantee_value"),
+        "downPayment": raw.get("downPayment"),
+        "grouped_apartments": raw.get("grouped_apartments") or [],
+        "low_price": raw.get("low_price"),
+        "min_area": raw.get("min_area"),
+        "property_images": raw.get("property_images") or [],
+        "property_facilities": raw.get("property_facilities") or [],
+        "payment_plans": raw.get("payment_plans") or [],
+        "developer_company": raw.get("developer_company") or {
+            "id": raw.get("developer_company_id"),
+            "name": ""  # یا prop.developer_company_name اگر موجوده
+        },
+        "city": raw.get("city") or {
+            "id": raw.get("city_id"),
+            "name": ""
+        },
+        "district": raw.get("district") or {
+            "id": raw.get("district_id"),
+            "name": ""
+        },
+        "property_type": raw.get("property_type") or {
+            "id": raw.get("property_type_id"),
+            "name": prop.property_type or ""
+        },
+        "property_status": raw.get("property_status") or {
+            "id": raw.get("property_status_id"),
+            "name": ""
+        },
+        "sales_status": raw.get("sales_status") or {
+            "id": raw.get("sales_status_id"),
+            "name": ""
+        },
+        "created_at": raw.get("created_at") or prop.created_at.isoformat() if hasattr(prop, "created_at") else datetime.utcnow(),
+        "fetched_at": prop.fetched_at.isoformat() if prop.fetched_at else datetime.utcnow(),
+        "updated_at": raw.get("updated_at") or (prop.updated_at.isoformat() if prop.updated_at else datetime.utcnow()),
+    }
+
+
+    # # بررسی اینکه آیا برخی فیلدهای مهم مقدار ندارند
+    # critical_keys = [
+    #     "description", "payment_plan", "grouped_apartments", 
+    #     "payment_plans", "property_images", "property_facilities",
+    #     "apartment"  # اضافه کردن apartment به فیلدهای حیاتی
+    # ]
+    # missing_data = any(result.get(key) in (None, [], "") for key in critical_keys)
+
+    # # اگر داده ناقص بود، مجدداً از API اصلی دریافت و جایگزین کن
+    # if missing_data:
+    #     fresh_data = await fetch_single_property(int(property_id))
+    #     if fresh_data:
+    #         prop.raw_data = json.dumps(fresh_data)
+    #         db.commit()  # بروزرسانی در دیتابیس
+    #         raw = fresh_data
+    #         # بروزرسانی result با داده‌های جدید
+    #         result.update({
+    #             "apartment": raw.get("apartment") or [],
+    #             "property_facilities": raw.get("property_facilities") or [],
+    #             "payment_plans": raw.get("payment_plans") or [],
+    #             "description": raw.get("description"),
+    #             "grouped_apartments": raw.get("grouped_apartments") or [],
+    #             "property_images": raw.get("property_images") or []
+    #         })
 
     return {"property": result}
 
@@ -495,41 +601,130 @@ async def get_latest_updated_properties(db: Session = Depends(get_db)):
 #     return {"property": prop_dict}
 
 
+# @router.post("/get-property", response_model=SinglePropertyWrapper)
+# async def get_single_property(data: SinglePropertyParams, db: Session = Depends(get_db)):
+#     """
+#     دریافت اطلاعات کامل یک ملک با شناسه.
+
+#     اگر ملک در دیتابیس لوکال نبود، از API می‌گیرد و ذخیره می‌کند.
+#     سپس خروجی با ساختار دقیق مشابه API اصلی بازمی‌گردد.
+#     """
+#     property_id = data.id
+#     property_item = db.query(Property).filter(Property.property_id == str(property_id)).first()
+
+#     if not property_item:
+#         api_property = await fetch_single_property(property_id)
+#         if not api_property:
+#             raise HTTPException(status_code=404, detail="ملک مورد نظر یافت نشد")
+        
+#         processed_data = process_property_data(api_property)
+#         new_property = Property(**processed_data)
+#         db.add(new_property)
+#         db.commit()
+#         db.refresh(new_property)
+#         property_item = new_property
+
+#     # اگر داده‌های مهم ناقص بودن، یک بار دیگه fetch کنیم
+#     result = convert_to_original_format_single(property_item)
+#     critical_keys = [
+#         "description", "payment_plan", "grouped_apartments", 
+#         "payment_plans", "property_images", "property_facilities"
+#     ]
+#     if any(result.get(key) in (None, [], "") for key in critical_keys):
+#         fresh_data = await fetch_single_property(property_id)
+#         if fresh_data:
+#             property_item.raw_data = json.dumps(fresh_data)
+#             db.commit()
+#             result = convert_to_original_format_single(property_item)
+
+#     return {"property": result}
+
+def safe_int(val):
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return None
+
 @router.post("/get-property", response_model=SinglePropertyWrapper)
 async def get_single_property(data: SinglePropertyParams, db: Session = Depends(get_db)):
-    """
-    دریافت اطلاعات کامل یک ملک با شناسه.
-
-    اگر ملک در دیتابیس لوکال نبود، از API می‌گیرد و ذخیره می‌کند.
-    سپس خروجی با ساختار دقیق مشابه API اصلی بازمی‌گردد.
-    """
     property_id = data.id
-    property_item = db.query(Property).filter(Property.property_id == str(property_id)).first()
 
-    if not property_item:
-        api_property = await fetch_single_property(property_id)
-        if not api_property:
-            raise HTTPException(status_code=404, detail="ملک مورد نظر یافت نشد")
-        
-        processed_data = process_property_data(api_property)
-        new_property = Property(**processed_data)
-        db.add(new_property)
-        db.commit()
-        db.refresh(new_property)
-        property_item = new_property
+    # ✅ دریافت ملک از API اصلی
+    raw = await fetch_single_property(property_id)
+    if not raw:
+        raise HTTPException(status_code=404, detail="ملک مورد نظر یافت نشد")
 
-    # اگر داده‌های مهم ناقص بودن، یک بار دیگه fetch کنیم
-    result = convert_to_original_format_single(property_item)
-    critical_keys = [
-        "description", "payment_plan", "grouped_apartments", 
-        "payment_plans", "property_images", "property_facilities"
-    ]
-    if any(result.get(key) in (None, [], "") for key in critical_keys):
-        fresh_data = await fetch_single_property(property_id)
-        if fresh_data:
-            property_item.raw_data = json.dumps(fresh_data)
-            db.commit()
-            result = convert_to_original_format_single(property_item)
+    # ✅ گرفتن apartment از FilteredProperty
+    filtered_prop = db.query(FilteredProperty).filter(FilteredProperty.property_id == str(property_id)).first()
+    apartment_data = []
+    if filtered_prop:
+        raw_filtered = filtered_prop.raw_data
+        if isinstance(raw_filtered, str):
+            try:
+                raw_filtered = json.loads(raw_filtered)
+            except json.JSONDecodeError:
+                raw_filtered = {}
+        apartment_data = raw_filtered.get("apartment", [])
+
+    # ✅ ساخت خروجی نهایی
+    result = {
+        "id": raw.get("id"),
+        "city_id": raw.get("city_id"),
+        "developer_company_id": raw.get("developer_company_id"),
+        "property_type_id": raw.get("property_type_id"),
+        "district_id": raw.get("district_id"),
+        "title": raw.get("title"),
+        "description": raw.get("description"),
+        "cover": raw.get("cover"),
+        "address": raw.get("address"),
+        "address_text": raw.get("address_text"),
+        "apartment": apartment_data,
+        "delivery_date": raw.get("delivery_date"),
+        "property_status_id": raw.get("property_status_id"),
+        "sales_status_id": raw.get("sales_status_id"),
+        "completion_rate": raw.get("completion_rate"),
+        "residential_units": raw.get("residential_units"),
+        "commercial_units": raw.get("commercial_units"),
+        "payment_plan": safe_int(raw.get("payment_plan")),
+        "post_delivery": safe_int(raw.get("post_delivery")),
+        "payment_minimum_down_payment": raw.get("payment_minimum_down_payment"),
+        "guarantee_rental_guarantee": raw.get("guarantee_rental_guarantee"),
+        "guarantee_rental_guarantee_value": raw.get("guarantee_rental_guarantee_value"),
+        "downPayment": raw.get("downPayment"),
+        "grouped_apartments": raw.get("grouped_apartments") or [],
+        "low_price": raw.get("low_price"),
+        "min_area": raw.get("min_area"),
+        "property_images": raw.get("property_images") or [],
+        "property_facilities": raw.get("property_facilities") or [],
+        "payment_plans": raw.get("payment_plans") or [],
+        "developer_company": raw.get("developer_company") or {
+            "id": raw.get("developer_company_id"),
+            "name": ""
+        },
+        "city": raw.get("city") or {
+            "id": raw.get("city_id"),
+            "name": ""
+        },
+        "district": raw.get("district") or {
+            "id": raw.get("district_id"),
+            "name": ""
+        },
+        "property_type": raw.get("property_type") or {
+            "id": raw.get("property_type_id"),
+            "name": ""
+        },
+        "property_status": raw.get("property_status") or {
+            "id": raw.get("property_status_id"),
+            "name": ""
+        },
+        "sales_status": raw.get("sales_status") or {
+            "id": raw.get("sales_status_id"),
+            "name": ""
+        },
+        "created_at": raw.get("created_at") or datetime.utcnow(),
+        "fetched_at": datetime.utcnow(),
+        "updated_at": raw.get("updated_at") or datetime.utcnow(),
+    }
 
     return {"property": result}
 
@@ -600,9 +795,6 @@ def recursive_json_decode(data):
 #     limit: int = Query(10000, description="حداکثر تعداد آیتم‌های بازگشتی"),
 #     db: Session = Depends(get_db)
 # ):
-#     """
-#     فیلتر کردن املاک با پارامترهای مختلف و بازگرداندن داده‌های استخراج‌شده از raw_data.
-#     """
 #     result = await filter_properties_db(db, filter_params, sorting_params, skip, limit)
 
 
@@ -756,166 +948,6 @@ def recursive_json_decode(data):
 #             if not any(fac.lower() in facilities_in_db for fac in filter_params.facilities):
 #                 continue
 
-
-#         filtered.append(p)
-
-#     return {
-#         "properties": filtered,
-#         "total": len(filtered)
-#     }
-
-from persiantools.jdatetime import JalaliDate
-from datetime import datetime
-
-def convert_jalali_to_gregorian(jalali_str: str) -> str:
-    from persiantools.jdatetime import JalaliDate
-    try:
-        parts = jalali_str.replace("-", "/").split("/")
-        if len(parts) == 3:
-            year, month, day = map(int, parts)
-        elif len(parts) == 2:
-            year, month = map(int, parts)
-            day = 15  # وسط ماه برای دقت بیشتر
-        else:
-            return None
-        g_date = JalaliDate(year, month, day).to_gregorian()
-        return f"{g_date.month:02d}/{g_date.year}"
-    except Exception:
-        return None
-
-# @router.post("/filter")
-# async def filter_properties_route(
-#     filter_params: FilterParams,
-#     sorting_params: SortingParams = SortingParams(),
-#     skip: int = Query(0, description="تعداد آیتم‌های رد شده برای صفحه‌بندی"),
-#     limit: int = Query(10000, description="حداکثر تعداد آیتم‌های بازگشتی"),
-#     db: Session = Depends(get_db)
-# ):
-#     result = await filter_properties_db(db, filter_params, sorting_params, skip, limit)
-
-#     def convert_raw(prop):
-#         raw = prop.raw_data
-#         if isinstance(raw, str):
-#             try:
-#                 raw = json.loads(raw)
-#             except json.JSONDecodeError:
-#                 raw = {}
-
-#         return {
-#             "id": raw.get("id") or int(prop.property_id),
-#             "title": raw.get("title") or prop.title,
-#             "description": raw.get("description"),
-#             "cover": raw.get("cover"),
-#             "address_text": raw.get("address_text"),
-#             "delivery_date": prop.delivery_date,
-#             "updated_at": raw.get("updated_at") or (prop.updated_at.isoformat() if prop.updated_at else None),
-#             "fetched_at": prop.fetched_at.isoformat() if prop.fetched_at else None,
-#             "is_deleted": raw.get("is_deleted"),
-#             "isDraft": raw.get("isDraft"),
-#             "requested_delete": raw.get("requested_delete"),
-#             "requested_create": raw.get("requested_create"),
-#             "is_fav": raw.get("is_fav"),
-#             "low_price": float(raw.get("low_price") or 0),
-#             "min_area": float(raw.get("min_area") or 0),
-
-#             # IDs
-#             "city_id": raw.get("city_id"),
-#             "district_id": raw.get("district_id"),
-#             "developer_company_id": raw.get("developer_company_id"),
-#             "property_type_id": raw.get("property_type_id"),
-#             "sales_status_id": raw.get("sales_status_id"),
-#             "property_status_id": raw.get("property_status_id"),
-
-#             # Objects
-#             "developer_company": raw.get("developer_company", {}),
-#             "city": raw.get("city", {}),
-#             "district": raw.get("district", {}),
-#             "neighborhood": raw.get("neighborhood", {}),
-#             "property_type": {"name": prop.property_type} if prop.property_type else {},
-#             "property_status": raw.get("property_status", {}),
-#             "sales_status": raw.get("sales_status", {}),
-#             "property_images": raw.get("property_images", []),
-#             "property_facilities": prop.property_facilities or [],
-#             "payment_plans": raw.get("payment_plans", []),
-#             "grouped_apartments": raw.get("grouped_apartments", []),
-#             "translations": raw.get("translations", []),
-#             "apartment": raw.get("apartment", []),
-
-#             # Other
-#             "completion_rate": raw.get("completion_rate"),
-#             "residential_units": raw.get("residential_units"),
-#             "commercial_units": raw.get("commercial_units"),
-#             "payment_plan": int(prop.payment_plan) if prop.payment_plan is not None else None,
-#             "post_delivery": int(prop.post_delivery) if prop.post_delivery is not None else None,
-#             "payment_minimum_down_payment": raw.get("payment_minimum_down_payment"),
-#             "guarantee_rental_guarantee": raw.get("guarantee_rental_guarantee"),
-#             "guarantee_rental_guarantee_value": raw.get("guarantee_rental_guarantee_value"),
-#             "downPayment": raw.get("downPayment")
-#         }
-
-#     raw_properties = [convert_raw(p) for p in result["properties"]]
-
-#     # 🔎 Python-side filters
-#     filtered = []
-#     for p in raw_properties:
-#         if filter_params.min_price is not None and p["low_price"] < filter_params.min_price:
-#             continue
-#         if filter_params.max_price is not None and p["low_price"] > filter_params.max_price:
-#             continue
-
-#         if filter_params.property_type:
-#             name = p.get("property_type", {}).get("name", "").lower()
-#             if name not in [t.lower() for t in filter_params.property_type]:
-#                 continue
-
-#         if filter_params.district_id:
-#             district_id = p.get("district_id") or p.get("district", {}).get("id")
-#             if district_id is None or str(district_id) not in [str(d) for d in filter_params.district_id]:
-#                 continue
-
-#         if filter_params.apartments:
-#             apartment_ids = set(int(aid) for aid in filter_params.apartments)
-#             apartment_list = p.get("apartment", [])
-#             if not any(apt.get("apartment_id") in apartment_ids for apt in apartment_list):
-#                 continue
-
-#         if filter_params.apartmentType:
-#             apartment_types = set(int(tid) for tid in filter_params.apartmentType)
-#             apartment_list = p.get("apartment", [])
-#             if not any(apt.get("apartment_type_id") in apartment_types for apt in apartment_list):
-#                 continue
-
-#         if filter_params.developer_company_id:
-#             dev_ids = set(int(did) for did in filter_params.developer_company_id)
-#             dev_id = p.get("developer_company_id") or p.get("developer_company", {}).get("id")
-#             if int(dev_id) not in dev_ids:
-#                 continue
-
-#         if filter_params.payment_plan:
-#             if str(p.get("payment_plan")) not in filter_params.payment_plan:
-#                 continue
-
-#         if filter_params.post_delivery:
-#             if str(p.get("post_delivery")) not in filter_params.post_delivery:
-#                 continue
-
-
-#         if filter_params.delivery_date:
-#             g_date = convert_jalali_to_gregorian(filter_params.delivery_date)
-#             if g_date and p.get("delivery_date") != g_date:
-#                 continue
-
-#         if filter_params.facilities:
-#             requested_facilities = set([f.strip().lower() for f in filter_params.facilities])
-#             available_facilities = set()
-
-#             for f in p.get("property_facilities", []):
-#                 name = f.get("facility", {}).get("name", "").strip().lower()
-#                 if name:
-#                     available_facilities.add(name)
-
-#             if not requested_facilities.issubset(available_facilities):
-#                 continue
 
 #         filtered.append(p)
 

@@ -180,6 +180,7 @@ class PropertyResponse_single(BaseModel):
     property_images: Optional[List[dict]] = []
     property_facilities: Optional[List[dict]] = []
     payment_plans: Optional[List[dict]] = []
+    apartment: Optional[List[dict]] = []
 
     created_at: datetime
     fetched_at: datetime
@@ -247,6 +248,8 @@ class FilterParams(BaseModel):
     currency: Optional[str] = Field(None, description="کد ارز (مثلا USD, AED)")
     area_unit: Optional[str] = Field(None, description="واحد مساحت (مثلا متر مربع، فوت مربع)")
 
+
+
 class SortingParams(BaseModel):
     """پارامترهای مرتب‌سازی برای API داده‌های املاک"""
     sorting_by: Optional[str] = Field("created_at_desc", 
@@ -265,3 +268,4 @@ class FilterResponse(BaseModel):
     developers: List[Dict[str, Any]]
     sales_statuses: List[Dict[str, Any]]
     property_statuses: List[Dict[str, Any]] 
+
