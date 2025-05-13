@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse, ORJSONResponse
+from fastapi.openapi.utils import get_openapi
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
@@ -11,25 +13,23 @@ from dotenv import load_dotenv
 from App.database import engine, Base, SessionLocal
 from App.routers import router as app_router
 from App.properties.models import Property
-from App.properties.routes import convert_to_original_format  # یا هر کجا که این تابع هست
+from App.properties.routes import convert_to_original_format
 from App.properties.scheduler import initialize_scheduler, stop_scheduler
 from App.chatbot.chatbot_code import real_estate_chatbot
 from App.chatbot.chatbot_code import ChatRequest
 
-
 # بارگذاری env
 load_dotenv("config.env")
-
-# در dev فقط:
 is_dev_env = os.getenv("ENV", "development") == "development"
+
+# فقط در حالت توسعه دیتابیس بساز
 if is_dev_env:
     Base.metadata.create_all(bind=engine)
 
-# کش در حافظه
+# کش املاک
 property_cache = {}
 scheduler = BackgroundScheduler()
 
-# کش دیتای املاک از دیتابیس
 def fetch_all_properties_from_db():
     db = SessionLocal()
     try:
@@ -71,11 +71,9 @@ def start_scheduler():
 # ✅ چرخه عمر برنامه
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    initialize_scheduler()           # 📅 برای API اصلی
-    fetch_and_cache_properties()     # 🏘 برای املاک
-    start_scheduler()                # ⏱ برای املاک
-    # fetch_chatbot_cache()            # 🤖 کش چت‌بات
-    # start_chatbot_scheduler()        # 🤖 زمانبند چت‌بات
+    initialize_scheduler()
+    fetch_and_cache_properties()
+    start_scheduler()
     yield
     stop_scheduler()
 
@@ -85,8 +83,14 @@ app = FastAPI(
     description="Backend API for property management",
     version="1.0.0",
     openapi_version="3.0.2",
+    docs_url="/docs" if is_dev_env else None,  # فقط در dev
+    redoc_url=None,
+    openapi_url="/openapi.json",
     lifespan=lifespan
 )
+
+# ✅ فعال‌سازی GZIP برای همه‌ی responseها
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # ✅ CORS
 app.add_middleware(
@@ -115,14 +119,11 @@ def get_cached_properties():
         "district_count": len(data["districts"])
     }
 
-
 # ✅ مسیر API برای چت‌بات
 @app.post("/chatbot")
 async def chat(request: ChatRequest):
-
     user_message = request.message.strip()
 
-    # ✅ **۱. اگر چت‌بات برای اولین بار باز شود، پیام خوش‌آمدگویی ارسال کند**
     if not user_message:
         welcome_message = """
             <div style="text-align: right; direction: rtl; background-color: #e6f7ff; padding: 12px; border-radius: 10px; border: 1px solid #b3d8ff;">
@@ -132,19 +133,30 @@ async def chat(request: ChatRequest):
                 <p style="margin-bottom: 0;"><b>چطور می‌توانم کمکتان کنم؟</b></p>
             </div>
             """
-
         return {"response": welcome_message}
 
-
-    """ دریافت پیام کاربر و ارسال پاسخ از طریق هوش مصنوعی """
     bot_response = await real_estate_chatbot(request.message)
     return {"response": bot_response}
 
-
-# ✅ اتصال روت‌ها
+# ✅ اتصال تمام روت‌های پروژه
 app.include_router(app_router, prefix="/api")
 
-# ✅ اجرای برنامه
+# ✅ کش کردن openapi.json برای سرعت لود /docs
+cached_openapi_schema = None
+
+@app.get("/openapi.json", include_in_schema=False)
+async def custom_openapi():
+    global cached_openapi_schema
+    if cached_openapi_schema is None:
+        cached_openapi_schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+    return ORJSONResponse(content=cached_openapi_schema)
+
+# ✅ اجرای پروژه با uvicorn
 if __name__ == "__main__":
     import uvicorn
     host = os.getenv("API_HOST", "0.0.0.0")
