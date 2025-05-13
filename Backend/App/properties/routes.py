@@ -37,6 +37,11 @@ router = APIRouter(
 
 
 # روت برای دریافت فیلترهای موجود
+
+from cachetools import TTLCache
+filter_cache = TTLCache(maxsize=100, ttl=3600) 
+get_filters_cache = TTLCache(maxsize=1, ttl=3600) 
+
 @router.get("/filters", response_model=Dict[str, Any])
 async def get_filters():
     """
@@ -48,12 +53,43 @@ async def get_filters():
     Returns:
         Dict[str, Any]: لیست فیلترهای موجود
     """
-    filters = await fetch_filters()
+    # filters = await fetch_filters()
     
+    # if not filters:
+    #     raise HTTPException(status_code=500, detail="خطا در دریافت فیلترها")
+    
+    # return filters
+    if "default" in get_filters_cache:
+        print("✅ cache hit from get_filters")
+        return get_filters_cache["default"]
+
+    print("❌ cache miss from get_filters")
+    filters = await fetch_filters()
+
     if not filters:
         raise HTTPException(status_code=500, detail="خطا در دریافت فیلترها")
-    
+
+    get_filters_cache["default"] = filters
+    print("✅ cache set for get_filters")
+
     return filters
+# @router.get("/filters", response_model=Dict[str, Any])
+# async def get_filters():
+#     """
+#     آوردمش اول چون با get ارور میداد چون قبلش single property بود.
+#     دریافت لیست فیلترهای موجود برای املاک.
+    
+#     این API لیست تمام فیلترهای موجود برای املاک را برمی‌گرداند.
+    
+#     Returns:
+#         Dict[str, Any]: لیست فیلترهای موجود
+#     """
+#     filters = await fetch_filters()
+    
+#     if not filters:
+#         raise HTTPException(status_code=500, detail="خطا در دریافت فیلترها")
+    
+#     return filters
 
 
 def convert_to_original_format(prop: Property) -> dict:
