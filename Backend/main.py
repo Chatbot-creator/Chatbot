@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -6,9 +7,13 @@ from fastapi.openapi.utils import get_openapi
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
-import os
+import os, uuid
+from typing import Optional
 import json
 from dotenv import load_dotenv
+from fastapi import UploadFile, File, Form, Request
+import aiofiles
+import openai
 
 from App.database import engine, Base, SessionLocal
 from App.routers import router as app_router
@@ -119,24 +124,75 @@ def get_cached_properties():
         "district_count": len(data["districts"])
     }
 
-# ✅ مسیر API برای چت‌بات
+from openai import OpenAI
+client = OpenAI()
 @app.post("/chatbot")
-async def chat(request: ChatRequest):
-    user_message = request.message.strip()
-
-    if not user_message:
-        welcome_message = """
-            <div style="text-align: right; direction: rtl; background-color: #e6f7ff; padding: 12px; border-radius: 10px; border: 1px solid #b3d8ff;">
-                <p style="margin-top: 0; font-weight: bold; font-size: 16px;">👋 به چت‌بات مشاور املاک <span style="color: #000000;">شرکت ترونست</span> خوش آمدید!</p>
-                <p style="margin: 6px 0;">من اینجا هستم تا به شما در پیدا کردن <b>بهترین املاک در دبی</b> کمک کنم. 🏡✨</p>
-                <hr style="border-top: 1px solid #ccc;">
-                <p style="margin-bottom: 0;"><b>چطور می‌توانم کمکتان کنم؟</b></p>
-            </div>
+async def unified_chatbot(message: str = Form(None), file: UploadFile = File(None)):
+    # ✅ حالت: پیام متنی
+    if message is not None and file is None:
+        user_message = message.strip()
+        if not user_message:
+            welcome_message = """
+                <div style="text-align: right; direction: rtl; background-color: #e6f7ff; padding: 12px; border-radius: 10px; border: 1px solid #b3d8ff;">
+                    <p style="margin-top: 0; font-weight: bold; font-size: 16px;">👋 به چت‌بات مشاور املاک <span style="color: #000000;">شرکت ترونست</span> خوش آمدید!</p>
+                    <p style="margin: 6px 0;">من اینجا هستم تا به شما در پیدا کردن <b>بهترین املاک در دبی</b> کمک کنم. 🏡✨</p>
+                    <hr style="border-top: 1px solid #ccc;">
+                    <p style="margin-bottom: 0;"><b>چطور می‌توانم کمکتان کنم؟</b></p>
+                </div>
             """
-        return {"response": welcome_message}
+            return {"response": welcome_message}
+        bot_response = await real_estate_chatbot(user_message)
+        return {"response": bot_response}
 
-    bot_response = await real_estate_chatbot(request.message)
-    return {"response": bot_response}
+    # ✅ حالت: فایل صوتی
+    elif file is not None:
+        print("📥 دریافت فایل صوتی:", file.filename)
+
+        # ذخیره موقت فایل
+        temp_path = f"temp_{file.filename}"
+        try:
+            async with aiofiles.open(temp_path, 'wb') as out_file:
+                content = await file.read()
+                await out_file.write(content)
+            print("📁 فایل ذخیره شد:", temp_path)
+        except Exception as e:
+            print("❌ خطا در ذخیره فایل:", e)
+            return {"error": "خطا در ذخیره فایل صوتی"}
+
+        # تبدیل صوت به متن با Whisper
+        try:
+            with open(temp_path, "rb") as audio_file:
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file
+                )
+            print("📝 متن استخراج‌شده:", transcript.text)
+        except Exception as e:
+            print("❌ خطا در تبدیل صوت:", e)
+            return {"error": "خطا در تبدیل صوت به متن"}
+
+        try:
+            os.remove(temp_path)
+            print("🧹 فایل حذف شد.")
+        except Exception as e:
+            print("⚠️ خطا در حذف فایل:", e)
+
+        user_text = transcript.text
+        try:
+            bot_response = await real_estate_chatbot(user_text)
+            print("🤖 پاسخ بات:", bot_response)
+        except Exception as e:
+            print("❌ خطا در چت‌بات:", e)
+            return {"error": "خطا در پردازش چت‌بات"}
+
+        return {
+            # "user_text": user_text,
+            "response": bot_response
+        }
+
+    # ❌ هیچ ورودی معتبری نیامده
+    return {"error": "نه پیام متنی و نه فایل صوتی ارسال شده است"}
+
 
 # ✅ اتصال تمام روت‌های پروژه
 app.include_router(app_router, prefix="/api")
