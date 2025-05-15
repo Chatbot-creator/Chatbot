@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -11,17 +10,23 @@ import os, uuid
 from typing import Optional
 import json
 from dotenv import load_dotenv
-from fastapi import UploadFile, File, Form, Request
+from fastapi import UploadFile, File, Form, Request, Depends
 import aiofiles
 import openai
+from sqlalchemy.orm import Session
 
-from App.database import engine, Base, SessionLocal
+from App.database import engine, Base, SessionLocal, get_db
 from App.routers import router as app_router
 from App.properties.models import Property
 from App.properties.routes import convert_to_original_format
 from App.properties.scheduler import initialize_scheduler, stop_scheduler
 from App.chatbot.chatbot_code import real_estate_chatbot
 from App.chatbot.chatbot_code import ChatRequest
+from App.chatbot.crud import (
+    get_chat_session, create_chat_session,
+    create_voice_message, delete_old_voice_messages
+)
+
 
 # بارگذاری env
 load_dotenv("config.env")
@@ -126,8 +131,23 @@ def get_cached_properties():
 
 from openai import OpenAI
 client = OpenAI()
+
+
+# ✅ مسیر API برای چت‌بات - پشتیبانی از متن و صوت
 @app.post("/chatbot")
-async def unified_chatbot(message: str = Form(None), file: UploadFile = File(None)):
+async def unified_chatbot(
+    message: str = None,
+    file: UploadFile = File(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Unified endpoint for handling both text and voice messages.
+    
+    Args:
+        message: Text message from user (optional)
+        file: Voice message file (optional)
+        db: Database session
+    """
     # ✅ حالت: پیام متنی
     if message is not None and file is None:
         user_message = message.strip()
@@ -146,52 +166,79 @@ async def unified_chatbot(message: str = Form(None), file: UploadFile = File(Non
 
     # ✅ حالت: فایل صوتی
     elif file is not None:
-        print("📥 دریافت فایل صوتی:", file.filename)
-
-        # ذخیره موقت فایل
-        temp_path = f"temp_{file.filename}"
         try:
-            async with aiofiles.open(temp_path, 'wb') as out_file:
-                content = await file.read()
-                await out_file.write(content)
-            print("📁 فایل ذخیره شد:", temp_path)
-        except Exception as e:
-            print("❌ خطا در ذخیره فایل:", e)
-            return {"error": "خطا در ذخیره فایل صوتی"}
+            print("📥 دریافت فایل صوتی:", file.filename)
 
-        # تبدیل صوت به متن با Whisper
-        try:
-            with open(temp_path, "rb") as audio_file:
-                transcript = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file
-                )
-            print("📝 متن استخراج‌شده:", transcript.text)
-        except Exception as e:
-            print("❌ خطا در تبدیل صوت:", e)
-            return {"error": "خطا در تبدیل صوت به متن"}
+            # دریافت یا ایجاد جلسه چت
+            db_session = get_chat_session(db, "voice_user")  # TODO: implement proper user session management
+            if not db_session:
+                db_session = create_chat_session(db, "voice_user")            # خواندن محتوای فایل
+            content = await file.read()
+            
+            # ✅ ذخیره فایل صوتی در دیتابیس
+            voice_message = create_voice_message(
+                db=db,
+                session_id=db_session.id,
+                file_data=content,
+                original_filename=file.filename
+            )
 
-        try:
-            os.remove(temp_path)
-            print("🧹 فایل حذف شد.")
-        except Exception as e:
-            print("⚠️ خطا در حذف فایل:", e)
+            # ✅ تبدیل صوت به متن با Whisper
+            try:
+                # ذخیره موقت فایل
+                temp_file_path = f"temp_voice_{file.filename}"
+                with open(temp_file_path, "wb") as temp_file:
+                    temp_file.write(content)
+                
+                # ارسال فایل به Whisper
+                with open(temp_file_path, "rb") as audio_file:
+                    transcript = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file,
+                        prompt="""
+                        این فایل صوتی به زبان فارسی درباره خرید و فروش ملک در دبی است. 
+                        کلمات کلیدی شامل "واحد"، "آپارتمان"، "اتاق خواب"، "درهم"، "اقساطی"، "نقدی"، "متراژ"، "ویو دریا"، "دبی مارینا" و ... است.
+                        لطفاً اگر کلمات اشتباه یا ناقص شنیده می‌شوند، آن‌ها را با فرم درست‌شان بنویس.
+                        مثلاً:
+                        - واخد ← واحد
+                        - ی خونه ← یک خانه
+                        - ویلا ی دوبلکس ← ویلای دوبلکس
+                        - اتاقه خواب ← اتاق خواب
+                        - دو خوابه با قسط ← آپارتمان دو خوابه با پرداخت قسطی
+                        همه‌ی خروجی باید به فارسی صحیح و بدون اشتباه تایپی باشد.
+                        مثال‌ها:
+                        - من یک واحد یک‌خوابه با بودجه دو میلیون درهم می‌خوام.
+                        - دنبال آپارتمان دو خوابه با ویو دریا هستم.
+                        - خونه ۷۵ متری با شرایط اقساطی داری؟
+                        - دنبال واحدی در دبی مارینا هستم.
+                        """
+                    )
+                    
+                # حذف فایل موقت
+                import os
+                os.remove(temp_file_path)
+                
+                # به‌روزرسانی متن استخراج شده در دیتابیس
+                voice_message.transcribed_text = transcript.text
+                db.commit()
+                
+                print("📝 متن استخراج‌شده:", transcript.text)
+                
+                # پردازش متن استخراج شده توسط چت‌بات
+                bot_response = await real_estate_chatbot(transcript.text)
+                return {"response": bot_response}
 
-        user_text = transcript.text
-        try:
-            bot_response = await real_estate_chatbot(user_text)
-            print("🤖 پاسخ بات:", bot_response)
-        except Exception as e:
-            print("❌ خطا در چت‌بات:", e)
-            return {"error": "خطا در پردازش چت‌بات"}
+            except Exception as e:
+                print("❌ خطا در تبدیل صوت:", e)
+                return {"error": "خطا در تبدیل صوت به متن"}
 
-        return {
-            # "user_text": user_text,
-            "response": bot_response
-        }
+        except Exception as e:
+            print("❌ خطا در پردازش فایل صوتی:", e)
+            return {"error": "خطا در پردازش فایل صوتی"}
 
     # ❌ هیچ ورودی معتبری نیامده
     return {"error": "نه پیام متنی و نه فایل صوتی ارسال شده است"}
+
 
 
 # ✅ اتصال تمام روت‌های پروژه
