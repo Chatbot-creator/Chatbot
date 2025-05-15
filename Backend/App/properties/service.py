@@ -1,19 +1,18 @@
-import httpx
-import asyncio
-import logging
-import os
-import json
-from datetime import datetime
-from typing import List, Dict, Any, Optional
+from sqlalchemy import cast, String, Float, JSON, Integer, desc, asc, or_, func, text
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import desc, asc, or_, func
+from typing import List, Dict, Any, Optional, Tuple
+from datetime import datetime
+import json
+import logging
+import os
+import httpx
 from dotenv import load_dotenv
 
 from App.properties.models import Property
 from App.properties.schemas import FilterParams, SortingParams
 
-# تنظیم لاگر با سطح مناسب برای محیط تولید
+# تنظیم لاگر
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -28,52 +27,6 @@ API_LATEST_UPDATED_URL = "https://panel.estaty.app/api/v1/latestUpdatedPropertie
 API_GET_PROPERTY_URL = "https://panel.estaty.app/api/v1/getProperty"
 API_GET_FILTERS_URL = "https://panel.estaty.app/api/v1/getFilters"
 API_FILTER_URL = "https://panel.estaty.app/api/v1/filter"
-
-# async def fetch_properties() -> Optional[List[Dict[str, Any]]]:
-#     """
-#     دریافت داده‌های املاک از API خارجی.
-    
-#     استفاده از App-key در هدر برای احراز هویت. درخواست POST به API برای دریافت لیست املاک.
-    
-#     Returns:
-#         Optional[List[Dict[str, Any]]]: لیست املاک دریافت شده یا None در صورت بروز خطا
-#     """
-#     # تنظیم هدرها برای API
-#     headers = {
-#         "App-key": API_KEY,
-#         "Content-Type": "application/json"
-#     }
-    
-#     try:
-#         logger.info("در حال ارسال درخواست به API املاک")
-        
-#         async with httpx.AsyncClient(timeout=60.0) as client:
-#             response = await client.post(API_URL, headers=headers)
-            
-#             if response.status_code == 200:
-#                 try:
-#                     data = response.json()
-#                     # بررسی ساختارهای مختلف پاسخ API
-#                     if "properties" in data and "data" in data["properties"]:
-#                         properties_data = data["properties"]["data"]
-#                         logger.info(f"داده‌ها با موفقیت دریافت شدند. تعداد املاک: {len(properties_data)}")
-#                         return properties_data
-#                     elif "data" in data:
-#                         logger.info(f"داده‌ها با موفقیت دریافت شدند. تعداد آیتم‌ها: {len(data['data'])}")
-#                         return data["data"]
-#                     else:
-#                         logger.warning(f"ساختار داده ناشناخته است: {json.dumps(data)[:200]}")
-#                         return []
-#                 except json.JSONDecodeError as e:
-#                     logger.error(f"خطا در تجزیه پاسخ JSON: {str(e)}")
-#             else:
-#                 logger.error(f"وضعیت خطا از API: {response.status_code} - {response.text}")
-    
-#     except Exception as e:
-#         logger.error(f"خطا در ارتباط با API: {str(e)}")
-    
-#     logger.error("دریافت داده‌ها از API با شکست مواجه شد")
-#     return None
 
 async def fetch_properties(page: int = 1) -> Optional[List[Dict[str, Any]]]:
     headers = {
@@ -589,185 +542,57 @@ async def get_latest_updated_properties_db(db: Session, limit: int = 10) -> List
     return db.query(Property).order_by(desc(Property.updated_at)).limit(limit).all()
 
 
-from sqlalchemy import cast, String, Float
-from sqlalchemy.sql.expression import or_
 async def filter_properties_db(db: Session, filter_params: FilterParams, 
-                            sorting_params: SortingParams, skip: int = 0, limit: int = 100) -> Dict[str, Any]:
+                            sorting_params: SortingParams) -> tuple[list[Property], int]:
     """
     فیلتر کردن املاک در دیتابیس با پارامترهای مختلف
-    
-    Args:
-        db (Session): نشست دیتابیس
-        filter_params (FilterParams): پارامترهای فیلتر
-        sorting_params (SortingParams): پارامترهای مرتب‌سازی
-        skip (int): تعداد آیتم‌ها برای پرش (پیش‌فرض: ۰)
-        limit (int): تعداد آیتم‌ها برای نمایش (پیش‌فرض: ۱۰۰)
-        
-    Returns:
-        Dict[str, Any]: لیست املاک فیلتر شده و تعداد کل
     """
-    query = db.query(FilteredProperty)
+    query = db.query(Property)
     
-    # # # اعمال فیلترها
-    # if filter_params.property_name:
-    #     query = query.filter(FilteredProperty.title.ilike(f"%{filter_params.property_name}%"))
+    # اعمال فیلترها با استفاده از raw_data
+    if filter_params.propertyType:
+        query = query.filter(
+            cast(Property.raw_data, JSON)['property_type_id'].astext.cast(Integer) == filter_params.propertyType
+        )
     
-    # if filter_params.city_id:
-    #     # جستجو در JSON ذخیره‌شده در فیلد raw_data
-    #     # توجه: این روش برای SQLite کار نمی‌کند و نیاز به اصلاح برای پشتیبانی از PostgreSQL دارد
-    #     # در اینجا فرض می‌کنیم که فیلد city در جدول وجود دارد
-    #     city_filters = []
-    #     for city_id in filter_params.city_id:
-    #         city_filters.append(FilteredProperty.city.ilike(f"%{city_id}%"))
-    #     if city_filters:
-    #         query = query.filter(or_(*city_filters))
+    if filter_params.apartmentType:
+        query = query.filter(
+            cast(Property.raw_data, JSON)['apartment_type_id'].astext.cast(Integer) == filter_params.apartmentType
+        )
     
-    # if filter_params.min_price is not None:
-    #     query = query.filter(FilteredProperty.price >= filter_params.min_price)
+    if filter_params.apartment:
+        query = query.filter(
+            cast(Property.raw_data, JSON)['apartment_id'].astext.cast(Integer) == filter_params.apartment
+        )
     
-    # if filter_params.max_price is not None:
-    #     query = query.filter(FilteredProperty.price <= filter_params.max_price)
+    if filter_params.district:
+        query = query.filter(
+            text("raw_data->>'district'->>'name' = :district")
+        ).params(district=filter_params.district)
     
-    # if filter_params.min_area is not None:
-    #     query = query.filter(FilteredProperty.area >= filter_params.min_area)
+    if filter_params.minPrice is not None:
+        query = query.filter(
+            cast(Property.raw_data, JSON)['low_price'].astext.cast(Float) >= filter_params.minPrice
+        )
     
-    # if filter_params.max_area is not None:
-    #     query = query.filter(FilteredProperty.area <= filter_params.max_area)
+    if filter_params.maxPrice is not None:
+        query = query.filter(
+            cast(Property.raw_data, JSON)['low_price'].astext.cast(Float) <= filter_params.maxPrice
+        )
     
-    # if filter_params.property_type:
-    #     property_type_filters = []
-    #     for prop_type in filter_params.property_type:
-    #         property_type_filters.append(FilteredProperty.property_type.ilike(f"%{prop_type}%"))
-    #     if property_type_filters:
-    #         query = query.filter(or_(*property_type_filters))
+    # اعمال مرتب‌سازی
+    sort_field = sorting_params.field or "created_at"
+    sort_order = sorting_params.order or "desc"
     
-    # # اعمال مرتب‌سازی
-    # if sorting_params.sorting_by:
-    #     # sort_field, sort_direction = sorting_params.sorting_by.split("_")
-    #     sort_field, sort_direction = sorting_params.sorting_by.rsplit("_", 1) # این خطو اضافه کردم چون ارور داشت
-    #     if sort_field == "price":
-    #         if sort_direction == "asc":
-    #             query = query.order_by(asc(FilteredProperty.price))
-    #         else:
-    #             query = query.order_by(desc(FilteredProperty.price))
-    #     elif sort_field == "area":
-    #         if sort_direction == "asc":
-    #             query = query.order_by(asc(FilteredProperty.area))
-    #         else:
-    #             query = query.order_by(desc(FilteredProperty.area))
-    #     elif sort_field == "name":
-    #         if sort_direction == "asc":
-    #             query = query.order_by(asc(FilteredProperty.title))
-    #         else:
-    #             query = query.order_by(desc(FilteredProperty.title))
-    #     elif sort_field == "created_at":
-    #         if sort_direction == "asc":
-    #             query = query.order_by(asc(FilteredProperty.created_at))
-    #         else:
-    #             query = query.order_by(desc(FilteredProperty.created_at))
+    if sort_order == "desc":
+        query = query.order_by(desc(getattr(Property, sort_field)))
+    else:
+        query = query.order_by(asc(getattr(Property, sort_field)))
     
-    # # فیلتر شهر
-    # if filter_params.city_id:
-    #     city_filters = []
-    #     for city_id in filter_params.city_id:
-    #         city_filters.append(
-    #             func.json_extract(FilteredProperty.raw_data, "$.city.id") == city_id
-    #         )
-    #     if city_filters:
-    #         query = query.filter(or_(*city_filters))
-
-    # # فیلتر قیمت
-    # if filter_params.min_price is not None:
-    #     query = query.filter(
-    #         cast(FilteredProperty.raw_data.op("->>")("low_price"), Float) >= filter_params.min_price
-    #     )
-    # if filter_params.max_price is not None:
-    #     query = query.filter(
-    #         cast(FilteredProperty.raw_data.op("->>")("low_price"), Float) <= filter_params.max_price
-    #     )
-
-    # # فیلتر متراژ
-    # if filter_params.min_area is not None:
-    #     query = query.filter(
-    #         cast(FilteredProperty.raw_data.op("->>")("min_area"), Float) >= filter_params.min_area
-    #     )
-    # if filter_params.max_area is not None:
-    #     query = query.filter(
-    #         cast(FilteredProperty.raw_data.op("->>")("min_area"), Float) <= filter_params.max_area
-    #     )
-
-    # # فیلتر نوع ملک
-    # if filter_params.property_type:
-    #     type_filters = []
-    #     for ptype in filter_params.property_type:
-    #         type_filters.append(
-    #             FilteredProperty.raw_data
-    #             .op("->")("property_type")
-    #             .op("->>")("name")
-    #             .ilike(f"%{ptype}%")
-    #         )
-    #     if type_filters:
-    #         query = query.filter(or_(*type_filters))
-
-    # # مرتب‌سازی
-    # if sorting_params.sorting_by:
-    #     sort_field, sort_dir = sorting_params.sorting_by.rsplit("_", 1)
-
-    #     sort_map = {
-    #         "price": ("low_price", Float),
-    #         "area": ("min_area", Float),
-    #         "name": ("title", String)
-    #     }
-
-    #     if sort_field in sort_map:
-    #         field, field_type = sort_map[sort_field]
-    #         sort_expr = cast(FilteredProperty.raw_data.op("->>")(field), field_type)
-    #         query = query.order_by(asc(sort_expr) if sort_dir == "asc" else desc(sort_expr))
-
-
-    # # # فیلتر متراژ
-    # # if filter_params.min_area is not None:
-    # #     query = query.filter(
-    # #         cast(func.json_extract(FilteredProperty.raw_data, "$.min_area"), Float) >= filter_params.min_area
-    # #     )
-    # # if filter_params.max_area is not None:
-    # #     query = query.filter(
-    # #         cast(func.json_extract(FilteredProperty.raw_data, "$.min_area"), Float) <= filter_params.max_area
-    # #     )
-
-    # # # فیلتر نوع ملک
-    # # if filter_params.property_type:
-    # #     type_filters = []
-    # #     for prop_type in filter_params.property_type:
-    # #         type_filters.append(
-    # #             func.json_extract(FilteredProperty.raw_data, "$.property_type.name").ilike(f"%{prop_type}%")
-    # #         )
-    # #     if type_filters:
-    # #         query = query.filter(or_(*type_filters))
-
-    # # # مرتب‌سازی
-    # # if sorting_params.sorting_by:
-    # #     sort_field, sort_dir = sorting_params.sorting_by.rsplit("_", 1)
-
-    # #     sort_map = {
-    # #         "price": "$.low_price",
-    # #         "area": "$.min_area",
-    # #         "name": "$.title",
-    # #         # "created_at": "$.created_at"
-    # #     }
-
-    # #     json_path = sort_map.get(sort_field)
-    # #     if json_path:
-    # #         sort_expr = cast(func.json_extract(FilteredProperty.raw_data, json_path), Float if sort_field in ["price", "area"] else String)
-    # #         query = query.order_by(asc(sort_expr) if sort_dir == "asc" else desc(sort_expr))
-
-    # شمارش کل آیتم‌ها
-    total = query.count()
+    # دریافت تعداد کل نتایج
+    total_count = query.count()
     
-    # اعمال صفحه‌بندی
-    properties = query.offset(skip).limit(limit).all()
+    # اجرای کوئری
+    properties = query.all()
     
-    return {
-        "properties": properties,
-        "total": total
-    } 
+    return properties, total_count

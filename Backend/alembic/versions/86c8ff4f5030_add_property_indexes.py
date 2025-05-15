@@ -19,20 +19,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Add indexes for better query performance."""
-    # Create indexes for commonly queried fields
-    op.create_index('idx_property_created_at', 'properties', ['created_at'])
-    op.create_index('idx_property_updated_at', 'properties', ['updated_at'])
-    op.create_index('idx_property_type', 'properties', ['property_type_id'])
-    op.create_index('idx_property_district', 'properties', ['district_id'])
-    op.create_index('idx_property_price', 'properties', ['price'])
+    """Upgrade schema."""
+    pass
 
 
 def downgrade() -> None:
-    """Remove the indexes."""
-    # Remove the indexes
-    op.drop_index('idx_property_created_at')
-    op.drop_index('idx_property_updated_at')
-    op.drop_index('idx_property_type')
-    op.drop_index('idx_property_district')
-    op.drop_index('idx_property_price')
+    """Downgrade schema."""
+    pass
