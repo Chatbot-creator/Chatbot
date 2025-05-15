@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -7,18 +7,28 @@ from datetime import datetime
 import os
 import json
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+from openai import AsyncOpenAI
 
-from App.database import engine, Base, SessionLocal
+from App.database import engine, Base, SessionLocal, get_db
 from App.routers import router as app_router
 from App.properties.models import Property
-from App.properties.routes import convert_to_original_format  # یا هر کجا که این تابع هست
+from App.properties.routes import convert_to_original_format
 from App.properties.scheduler import initialize_scheduler, stop_scheduler
 from App.chatbot.chatbot_code import real_estate_chatbot
 from App.chatbot.chatbot_code import ChatRequest
-
+from App.chatbot.crud import (
+    get_chat_session, create_chat_session,
+    create_voice_message, delete_old_voice_messages
+)
+from openai import AsyncOpenAI
 
 # بارگذاری env
 load_dotenv("config.env")
+
+# تنظیم OpenAI client
+api_key = os.getenv("OPENAI_API_KEY")
+client = AsyncOpenAI(api_key=api_key)
 
 # در dev فقط:
 is_dev_env = os.getenv("ENV", "development") == "development"
@@ -116,29 +126,94 @@ def get_cached_properties():
     }
 
 
-# ✅ مسیر API برای چت‌بات
+# ✅ مسیر API برای چت‌بات - پشتیبانی از متن و صوت
 @app.post("/chatbot")
-async def chat(request: ChatRequest):
-
-    user_message = request.message.strip()
-
-    # ✅ **۱. اگر چت‌بات برای اولین بار باز شود، پیام خوش‌آمدگویی ارسال کند**
-    if not user_message:
-        welcome_message = """
-            <div style="text-align: right; direction: rtl; background-color: #e6f7ff; padding: 12px; border-radius: 10px; border: 1px solid #b3d8ff;">
-                <p style="margin-top: 0; font-weight: bold; font-size: 16px;">👋 به چت‌بات مشاور املاک <span style="color: #000000;">شرکت ترونست</span> خوش آمدید!</p>
-                <p style="margin: 6px 0;">من اینجا هستم تا به شما در پیدا کردن <b>بهترین املاک در دبی</b> کمک کنم. 🏡✨</p>
-                <hr style="border-top: 1px solid #ccc;">
-                <p style="margin-bottom: 0;"><b>چطور می‌توانم کمکتان کنم؟</b></p>
-            </div>
+async def unified_chatbot(
+    message: str = None,
+    file: UploadFile = File(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Unified endpoint for handling both text and voice messages.
+    
+    Args:
+        message: Text message from user (optional)
+        file: Voice message file (optional)
+        db: Database session
+    """
+    # ✅ حالت: پیام متنی
+    if message is not None and file is None:
+        user_message = message.strip()
+        if not user_message:
+            welcome_message = """
+                <div style="text-align: right; direction: rtl; background-color: #e6f7ff; padding: 12px; border-radius: 10px; border: 1px solid #b3d8ff;">
+                    <p style="margin-top: 0; font-weight: bold; font-size: 16px;">👋 به چت‌بات مشاور املاک <span style="color: #000000;">شرکت ترونست</span> خوش آمدید!</p>
+                    <p style="margin: 6px 0;">من اینجا هستم تا به شما در پیدا کردن <b>بهترین املاک در دبی</b> کمک کنم. 🏡✨</p>
+                    <hr style="border-top: 1px solid #ccc;">
+                    <p style="margin-bottom: 0;"><b>چطور می‌توانم کمکتان کنم؟</b></p>
+                </div>
             """
+            return {"response": welcome_message}
+        bot_response = await real_estate_chatbot(user_message)
+        return {"response": bot_response}
 
-        return {"response": welcome_message}
+    # ✅ حالت: فایل صوتی
+    elif file is not None:
+        try:
+            print("📥 دریافت فایل صوتی:", file.filename)
 
+            # دریافت یا ایجاد جلسه چت
+            db_session = get_chat_session(db, "voice_user")  # TODO: implement proper user session management
+            if not db_session:
+                db_session = create_chat_session(db, "voice_user")            # خواندن محتوای فایل
+            content = await file.read()
+            
+            # ✅ ذخیره فایل صوتی در دیتابیس
+            voice_message = create_voice_message(
+                db=db,
+                session_id=db_session.id,
+                file_data=content,
+                original_filename=file.filename
+            )
 
-    """ دریافت پیام کاربر و ارسال پاسخ از طریق هوش مصنوعی """
-    bot_response = await real_estate_chatbot(request.message)
-    return {"response": bot_response}
+            # ✅ تبدیل صوت به متن با Whisper
+            try:
+                # ذخیره موقت فایل
+                temp_file_path = f"temp_voice_{file.filename}"
+                with open(temp_file_path, "wb") as temp_file:
+                    temp_file.write(content)
+                
+                # ارسال فایل به Whisper
+                with open(temp_file_path, "rb") as audio_file:
+                    transcript = await client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file
+                    )
+                    
+                # حذف فایل موقت
+                import os
+                os.remove(temp_file_path)
+                
+                # به‌روزرسانی متن استخراج شده در دیتابیس
+                voice_message.transcribed_text = transcript.text
+                db.commit()
+                
+                print("📝 متن استخراج‌شده:", transcript.text)
+                
+                # پردازش متن استخراج شده توسط چت‌بات
+                bot_response = await real_estate_chatbot(transcript.text)
+                return {"response": bot_response}
+
+            except Exception as e:
+                print("❌ خطا در تبدیل صوت:", e)
+                return {"error": "خطا در تبدیل صوت به متن"}
+
+        except Exception as e:
+            print("❌ خطا در پردازش فایل صوتی:", e)
+            return {"error": "خطا در پردازش فایل صوتی"}
+
+    # ❌ هیچ ورودی معتبری نیامده
+    return {"error": "نه پیام متنی و نه فایل صوتی ارسال شده است"}
 
 
 # ✅ اتصال روت‌ها
