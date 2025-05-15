@@ -2,7 +2,7 @@
 مدل‌های دیتابیس برای چت‌بات
 """
 
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, JSON, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -21,6 +21,7 @@ class ChatSession(Base):
     
     # رابطه با پیام‌ها
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+    voice_messages = relationship("VoiceMessage", back_populates="session", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<ChatSession(id={self.id}, user_id={self.user_id})>"
@@ -41,6 +42,30 @@ class ChatMessage(Base):
     
     def __repr__(self):
         return f"<ChatMessage(id={self.id}, is_user={self.is_user})>"
+
+
+
+class VoiceMessage(Base):
+    """مدل پیام‌های صوتی"""
+    
+    __tablename__ = "voice_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=False)
+    file_data = Column(LargeBinary)  # فایل صوتی به صورت باینری
+    original_filename = Column(String)
+    transcribed_text = Column(Text, nullable=True)  # متن استخراج شده از صوت
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # رابطه با جلسه چت
+    session = relationship("ChatSession", back_populates="voice_messages")
+    
+    def __repr__(self):
+        return f"<VoiceMessage(id={self.id}, filename={self.original_filename})>"
+
+
+
+
 
 class PropertyPreference(Base):
     """مدل ترجیحات املاک کاربر"""
