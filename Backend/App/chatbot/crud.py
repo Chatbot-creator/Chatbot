@@ -5,8 +5,9 @@
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 import json
+from datetime import datetime, timedelta
 
-from .models import ChatSession, ChatMessage, PropertyPreference
+from .models import ChatSession, ChatMessage, PropertyPreference, VoiceMessage
 
 # --- عملیات مربوط به جلسه‌های چت ---
 
@@ -158,3 +159,109 @@ def create_or_update_property_preference(
         db.commit()
         db.refresh(db_preference)
         return db_preference 
+    
+
+# --- عملیات مربوط به پیام‌های صوتی ---
+
+def create_voice_message(
+    db: Session,
+    session_id: int,
+    file_data: bytes,
+    original_filename: str,
+    transcribed_text: str = None
+) -> VoiceMessage:
+    """
+    ایجاد پیام صوتی جدید
+    
+    Args:
+        db: نشست دیتابیس
+        session_id: شناسه جلسه چت
+        file_data: محتوای فایل صوتی
+        original_filename: نام اصلی فایل
+        transcribed_text: متن استخراج شده از صوت (اختیاری)
+    
+    Returns:
+        پیام صوتی ایجاد شده
+    """
+    db_voice = VoiceMessage(
+        session_id=session_id,
+        file_data=file_data,
+        original_filename=original_filename,
+        transcribed_text=transcribed_text
+    )
+    db.add(db_voice)
+    db.commit()
+    db.refresh(db_voice)
+    return db_voice
+
+def get_voice_message(db: Session, message_id: int) -> Optional[VoiceMessage]:
+    """
+    دریافت یک پیام صوتی با شناسه
+    
+    Args:
+        db: نشست دیتابیس
+        message_id: شناسه پیام صوتی
+    
+    Returns:
+        پیام صوتی یا None اگر وجود نداشته باشد
+    """
+    return db.query(VoiceMessage).filter(VoiceMessage.id == message_id).first()
+
+def get_session_voice_messages(
+    db: Session,
+    session_id: int,
+    limit: int = 100
+) -> List[VoiceMessage]:
+    """
+    دریافت پیام‌های صوتی یک جلسه
+    
+    Args:
+        db: نشست دیتابیس
+        session_id: شناسه جلسه
+        limit: حداکثر تعداد پیام‌ها
+    
+    Returns:
+        لیست پیام‌های صوتی
+    """
+    return db.query(VoiceMessage).filter(
+        VoiceMessage.session_id == session_id
+    ).order_by(VoiceMessage.created_at.desc()).limit(limit).all()
+
+def update_voice_transcription(
+    db: Session,
+    voice_message: VoiceMessage,
+    transcribed_text: str
+) -> VoiceMessage:
+    """
+    بروزرسانی متن استخراج شده از صوت
+    
+    Args:
+        db: نشست دیتابیس
+        voice_message: پیام صوتی
+        transcribed_text: متن جدید استخراج شده
+    
+    Returns:
+        پیام صوتی بروزرسانی شده
+    """
+    voice_message.transcribed_text = transcribed_text
+    db.commit()
+    db.refresh(voice_message)
+    return voice_message
+
+def delete_old_voice_messages(db: Session, days: int = 1) -> int:
+    """
+    حذف پیام‌های صوتی قدیمی
+    
+    Args:
+        db: نشست دیتابیس
+        days: تعداد روزهای نگهداری پیام‌ها
+    
+    Returns:
+        تعداد پیام‌های حذف شده
+    """
+    cutoff_date = datetime.now() - timedelta(days=days)
+    result = db.query(VoiceMessage).filter(
+        VoiceMessage.created_at < cutoff_date
+    ).delete(synchronize_session=False)
+    db.commit()
+    return result
