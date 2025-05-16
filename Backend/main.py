@@ -138,7 +138,8 @@ client = OpenAI()
 async def unified_chatbot(
     request: Request,
     response: Response,
-    message: str = Form(None),
+    # message: str = Form(None),
+    message: str = None,
     reset_session: str = Form(None),
     file: UploadFile = File(None),
     db: Session = Depends(get_db)
