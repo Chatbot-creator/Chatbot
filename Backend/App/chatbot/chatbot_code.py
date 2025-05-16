@@ -18,6 +18,15 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi.responses import JSONResponse
 import copy
 
+from .crud import (
+    get_chat_session,
+    create_chat_session,
+    update_chat_session,
+    create_chat_message
+)
+from sqlalchemy.orm import Session
+from typing import Optional, Tuple
+
 # logging.basicConfig(
 #     level=logging.INFO,  # می‌تونی DEBUG یا WARNING هم بذاری
 #     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -49,13 +58,13 @@ HEADERS = {
 }
 #----------------------------------------------------------------------Bot
 import random
-memory_state = {}
-types = {}
+# memory_state = {}
+# types = {}
 memory_district = {}
-last_property_id = None
-last_properties_list = []
-last_selected_property = None  # ✅ ذخیره آخرین ملکی که کاربر در مورد آن اطلاعات بیشتری خواسته
-current_property_index = 0  # ✅ نگه‌داری ایندکس برای نمایش املاک بعدی
+# last_property_id = None
+# last_properties_list = []
+# last_selected_property = None  # ✅ ذخیره آخرین ملکی که کاربر در مورد آن اطلاعات بیشتری خواسته
+# current_property_index = 0  # ✅ نگه‌داری ایندکس برای نمایش املاک بعدی
 
 # ✅ تابع فیلتر املاک از API
 def filter_properties(filters):
@@ -131,7 +140,7 @@ class ChatRequest(BaseModel):
     message: str
 
 # ✅ استخراج فیلترهای جستجو از پیام کاربر
-def extract_filters(user_message: str, previous_filters: dict):
+def extract_filters(user_message: str, memory_state: dict):
     """ استفاده از GPT-4 برای استخراج اطلاعات کلیدی از پیام کاربر """
     district_mapping = {
             'Masdar City': 340, 'Meydan': 133, 'Wadi AlSafa 2': 146, 'Wadi AlSafa 5': 246, 'Alamerah': 279,
@@ -252,7 +261,7 @@ def extract_filters(user_message: str, previous_filters: dict):
 
     **🔹 اطلاعات قبلی کاربر درباره جستجوی ملک:**
     ```json
-    {json.dumps(previous_filters, ensure_ascii=False)}
+    {json.dumps(memory_state, ensure_ascii=False)}
     ```
     """
 
@@ -593,8 +602,8 @@ def extract_filters(user_message: str, previous_filters: dict):
                 extracted_data["questions_needed"] = missing_questions  # سوالات را داخل `extracted_data` نگه دار
 
         
-        if extracted_data.get("new_search"):
-            previous_filters.clear()  # **✅ ریست `memory_state`**
+        # if extracted_data.get("new_search"):
+        #     memory_state.clear()  # **✅ ریست `memory_state`**
 
         # if extracted_data.get("new_search"):
         #     if previous_filters.get("search_ready") is False:
@@ -612,9 +621,9 @@ def extract_filters(user_message: str, previous_filters: dict):
             extracted_data["min_price"] = None  
 
         if extracted_data.get("district") is None:
-            extracted_data["district"] = previous_filters.get("district")
+            extracted_data["district"] = memory_state.get("district")
 
-        previous_filters.update(extracted_data)
+        memory_state.update(extracted_data)
 
         # ✅ پردازش رشته JSON به یک دیکشنری
         return extracted_data
@@ -627,8 +636,8 @@ def extract_filters(user_message: str, previous_filters: dict):
         print("❌ Unexpected Error:", e)
         return {}
 
-property_name_to_id = {}
-property_ordered_list = []
+# property_name_to_id = {}
+# property_ordered_list = []
 
 
 def sort_properties_by_developer_popularity(properties):
@@ -709,19 +718,37 @@ def sort_properties_by_developer_popularity(properties):
     return sorted(properties, key=get_rank)
 
 
-async def generate_ai_summary(properties, start_index=0):
+# async def generate_ai_summary(properties, start_index=0):
+async def generate_ai_summary(
+    properties: list,
+    start_index: int = 0,
+    property_name_to_id: dict = None,
+    property_ordered_list: list = None,
+    number_property: int = 3
+) -> tuple:
     """ ارائه خلاصه کوتاه از املاک پیشنهادی به صورت تدریجی """
 
-    global last_properties_list, current_property_index, selected_properties, property_name_to_id, comp_properties, property_ordered_list
-    number_property = 3
+    # global last_properties_list, current_property_index, selected_properties, property_name_to_id, comp_properties, property_ordered_list
+    # number_property = 3
 
     if not properties:
-        return "متأسفانه در حال حاضر ملکی مطابق با شرایط شما یافت نشد. با تغییر برخی از شرایط، ممکن است گزینه‌های مناسب‌تری نمایش داده شود. 😊"
+        return ( 
+            "متأسفانه در حال حاضر ملکی مطابق با شرایط شما یافت نشد. با تغییر برخی از شرایط، ممکن است گزینه‌های مناسب‌تری نمایش داده شود. 😊",
+            property_name_to_id,
+            property_ordered_list,
+            [],
+            start_index,
+            []
+        )
     
         # return "متأسفانه هیچ ملکی با این مشخصات پیدا نشد. لطفاً بازه قیمتی یا تعداد اتاق خواب را تغییر دهید یا منطقه دیگری انتخاب کنید."
 
     # properties = sort_properties_by_developer_popularity(properties)
 
+    if property_name_to_id is None:
+        property_name_to_id = {}
+    if property_ordered_list is None:
+        property_ordered_list = []
 
     last_properties_list = properties
     comp_properties = properties
@@ -733,7 +760,14 @@ async def generate_ai_summary(properties, start_index=0):
     selected_properties = properties[start_index:current_property_index]
 
     if not selected_properties:
-        return "✅ تمامی املاک نمایش داده شده‌اند و مورد جدیدی موجود نیست."
+        return (
+            "✅ تمامی املاک نمایش داده شده‌اند و مورد جدیدی موجود نیست.",
+            property_name_to_id,
+            property_ordered_list,
+            [],
+            start_index,
+            []
+        )
 
     formatted_output = ""
         # ✅ **ذخیره نام ملک و ID آن برای جستجوهای بعدی**
@@ -845,16 +879,31 @@ async def generate_ai_summary(properties, start_index=0):
     </div>
     """
 
-    return formatted_output
+    return (
+        formatted_output,
+        property_name_to_id,
+        property_ordered_list,
+        selected_properties,
+        current_property_index,
+        properties
+    )
+
+    # return formatted_output
 
 
 
 # ✅ تابع ارائه اطلاعات تکمیلی یک ملک خاص
-def generate_ai_details(property_id, detail_type=None):
+# def generate_ai_details(property_id, detail_type=None):
+async def generate_ai_details(
+    property_id: int,
+    detail_type: str = None,
+    selected_properties: list = None
+) -> str:
     """ ارائه اطلاعات تکمیلی یک ملک خاص یا بخشی خاص از آن """
 
 
-    global property_name_to_id, selected_properties, property_ordered_list
+    # global property_name_to_id, selected_properties, property_ordered_list
+
     selected_property = next((p for p in selected_properties if p.get("id") == property_id), None)
     if not selected_property:
         print(f"❌ هشدار: ملکی با آی‌دی {property_id} در selected_properties پیدا نشد!")
@@ -1060,7 +1109,8 @@ async def fetch_real_estate_buying_guide(user_question):
 import json
 from fuzzywuzzy import process
 
-async def extract_property_identifier(user_message, property_name_to_id, property_ordered_list):
+# async def extract_property_identifier(user_message, property_name_to_id, property_ordered_list):
+async def extract_property_identifier(user_message: str, property_name_to_id: dict, property_ordered_list: list) -> Optional[int]:
     """با استفاده از هوش مصنوعی، شماره یا نام ملک را از پیام کاربر استخراج می‌کند و ID آن را برمی‌گرداند."""
 
     # ✅ چاپ دیکشنری برای دیباگ
@@ -1174,10 +1224,15 @@ def fetch_properties_from_estaty(property_names):
 
 
 
-async def compare_properties(user_message: str) -> str:
+# async def compare_properties(user_message: str) -> str:
+async def compare_properties(user_message: str,
+                             comp_properties: list,
+                             selected_properties: list,
+                             property_name_to_id: dict,
+                             property_ordered_list: list) -> tuple[str, list]:
     """ مقایسه‌ی دو یا چند ملک و ارائه بهترین پیشنهاد """
     
-    global comp_properties, property_name_to_id
+    # global comp_properties, property_name_to_id
 
     mentioned_properties = []
 
@@ -1300,15 +1355,21 @@ async def compare_properties(user_message: str) -> str:
         messages=[{"role": "system", "content": comparison_prompt}]
     )
 
-    return ai_response.choices[0].message.content.strip()
+    return ai_response.choices[0].message.content.strip(), comp_properties
 
 
 
 
-async def process_purchase_request(user_message: str) -> str:
+# async def process_purchase_request(user_message: str) -> str:
+async def process_purchase_request(
+    user_message: str,
+    property_name_to_id: dict,
+    property_ordered_list: list,
+    selected_properties: list
+) -> Tuple[str, Optional[int]]:
     """ بررسی درخواست خرید ملک و ارائه اطلاعات پرداخت، اقساط و تخفیف‌ها """
 
-    global property_name_to_id, property_ordered_list
+    # global property_name_to_id, property_ordered_list
 
     mentioned_properties = []
 
@@ -1384,7 +1445,7 @@ async def process_purchase_request(user_message: str) -> str:
                 mentioned_properties.append((property_name, property_id))
 
         if not mentioned_properties:
-            return "❌ متأسفم، این ملک در لیست املاک موجود پیدا نشد. لطفاً نام دقیق‌تر را وارد کنید."
+            return "❌ متأسفم، این ملک در لیست املاک موجود پیدا نشد. لطفاً نام دقیق‌تر را وارد کنید.", None
 
 
     # ✅ دریافت اطلاعات ملک از API
@@ -1392,7 +1453,7 @@ async def process_purchase_request(user_message: str) -> str:
     property_details = fetch_single_property(property_id)
 
     if not property_details:
-        return "❌ متأسفم، نتوانستم اطلاعات این پروژه را پیدا کنم."
+        return "❌ متأسفم، نتوانستم اطلاعات این پروژه را پیدا کنم.", None
 
     # ✅ ایجاد پرامپت برای دریافت شرایط خرید ملک
     purchase_prompt = f"""
@@ -1428,7 +1489,7 @@ async def process_purchase_request(user_message: str) -> str:
         messages=[{"role": "system", "content": purchase_prompt}]
     )
 
-    return ai_response.choices[0].message.content.strip()
+    return ai_response.choices[0].message.content.strip(), property_id
 
 
 
@@ -2341,13 +2402,82 @@ def clear_filter_memory(memory_state):
 
 just_answered_questions = True
 
-async def real_estate_chatbot(user_message: str) -> str:
+from typing import Optional, Dict, List
+
+def save_session_and_return(response: str, db_session, db, session_data, memory_state, types,
+                            last_properties_list, current_property_index, property_name_to_id,
+                            property_ordered_list, selected_properties, comp_properties,
+                            just_answered_questions):
+    
+    # # ✅ بررسی نوع response و استخراج بخش قابل ذخیره
+    # if isinstance(response, tuple):
+    #     print("⚠️ response is tuple, extracting HTML content from index 0")
+    #     response = response[0]
+
+    session_data.update({
+        "memory_state": memory_state,
+        "types": types,
+        "last_properties_list": last_properties_list,
+        "current_property_index": current_property_index,
+        "property_name_to_id": property_name_to_id,
+        "property_ordered_list": property_ordered_list,
+        "selected_properties": selected_properties,
+        "comp_properties": comp_properties,
+        "just_answered_questions": just_answered_questions
+    })
+    update_chat_session(db, db_session, session_data)
+    create_chat_message(db, db_session.id, response, is_user=False)
+    return response
+
+
+# async def real_estate_chatbot(user_message: str) -> str:
+async def real_estate_chatbot(
+    user_message: str,
+    memory_state: Dict = None,
+    types: Dict = None,
+    last_properties_list: List = None,
+    # session: Dict = None,
+    current_property_index: int = 0,
+    property_name_to_id: Dict = None,
+    property_ordered_list: List = None,
+    selected_properties: List = None,
+    comp_properties: List = None,
+    just_answered_questions: bool = True,
+    db: Optional[Session] = None,
+    user_id: Optional[str] = None
+) -> str:
     """ بررسی نوع پیام و ارائه پاسخ مناسب با تشخیص هوشمند """
 
-    print(f"📌  user message : {user_message}")
-    # logging.info(f"user_message: {user_message}")
+    # اگر دیتابیس و شناسه کاربر ارائه شده باشند، از سشن استفاده می‌کنیم
+    session_data = {}
+    if db and user_id:
+        # دریافت یا ایجاد سشن
+        db_session = get_chat_session(db, user_id)
+        if not db_session:
+            db_session = create_chat_session(db, user_id)
+            
+        # دریافت داده‌های سشن
+        session_data = db_session.session_data or {}
+        
+        # بازیابی داده‌های قبلی از سشن
+        memory_state = session_data.get("memory_state", memory_state or {})
+        types = session_data.get("types", types or {})
+        last_properties_list = session_data.get("last_properties_list", last_properties_list or [])
+        current_property_index = session_data.get("current_property_index", current_property_index)
+        property_name_to_id = session_data.get("property_name_to_id", property_name_to_id or {})
+        property_ordered_list = session_data.get("property_ordered_list", property_ordered_list or [])
+        selected_properties = session_data.get("selected_properties", selected_properties or [])
+        comp_properties = session_data.get("comp_properties", comp_properties or [])
+        just_answered_questions = session_data.get("just_answered_questions", just_answered_questions)
+        
+        # ذخیره پیام کاربر
+        create_chat_message(db, db_session.id, user_message, is_user=True)
 
-    global last_properties_list, current_property_index, memory_state, developer_mapping, facilities_mapping, just_answered_questions
+
+    print(f"📌  user message : {user_message}")
+    
+
+    # global last_properties_list, current_property_index, memory_state, developer_mapping, facilities_mapping, just_answered_questions
 
     # ✅ **۱. تشخیص اینکه پیام فقط یک سلام است یا سوالی در مورد ملک**
     greetings = ["سلام", "سلام خوبی؟", "سلام چطوری؟", "سلام وقت بخیر", "سلام روزت بخیر"]
@@ -2499,6 +2629,7 @@ async def real_estate_chatbot(user_message: str) -> str:
     
     🚫 **اگر پیام کاربر فقط یک ویژگی از ملک را مشخص کند (مثلاً "یک‌خوابه" یا "۷۰ متری")، اما حرفی از منطقه نزند یا نگویید "کجا" یا "کدوم منطقه" → این حالت را انتخاب نکن. در این موارد `search` درسته.**
     ❗️اگر جمله‌ی کاربر از طریق **Voice/Whisper** آمده باشد و داخلش عباراتی مثل "کجا"، "تو کدوم منطقه"، "در چه مناطقی" وجود نداشته باشد، حتماً آن را `search` تشخیص بده، نه `district_search`، حتی اگر بودجه یا تعداد اتاق گفته شده باشد.
+    ❗️اگر جمله‌ی کاربر از طریق چت آمده باشد و داخلش عباراتی مثل "کجا"، "تو کدوم منطقه"، "در چه مناطقی" وجود نداشته باشد، حتماً آن را `search` تشخیص بده، نه `district_search`، حتی اگر بودجه یا تعداد اتاق گفته شده باشد.
 
     🚨 اگر کاربر فقط عدد (مثلاً بودجه) نوشته و پیام قبلی `search` بوده، این پیام را به اشتباه `district_search` انتخاب نکن. در این حالت هم باید `search` بماند.
     🚨 **این حالت را انتخاب نکن اگر:**  کاربر قبلاً جستجوی ملک انجام داده و فقط بودجه را اضافه کرده است. (در این صورت `search` را انتخاب کن.)
@@ -2704,11 +2835,11 @@ async def real_estate_chatbot(user_message: str) -> str:
     print("has_active_filters", has_active_filters)
     print("just_answered_questions", just_answered_questions)
     # ✅ اگر یکی از این حالت‌ها بود و هیچ سوالی باقی نیست، بررسی ادامه یا ریست
-    if message_type in sensitive_types and has_active_filters and not just_answered_questions:
-        if not memory_state.get("pending_message"):
-            memory_state["pending_message"] = user_message  # ذخیره پیام فعلی
-            print("memory_soal", memory_state)
-            return "<p>❓ آیا می‌خواهید با همین فیلترها ادامه بدهیم یا از اول جستجو کنیم؟ (عبارت <b>ادامه بده</b> یا <b>ریست کن</b> را وارد کنید)</p>"
+    # if message_type in sensitive_types and has_active_filters and not just_answered_questions:
+    #     if not memory_state.get("pending_message"):
+    #         memory_state["pending_message"] = user_message  # ذخیره پیام فعلی
+    #         print("memory_soal", memory_state)
+    #         return "<p>❓ آیا می‌خواهید با همین فیلترها ادامه بدهیم یا از اول جستجو کنیم؟ (عبارت <b>ادامه بده</b> یا <b>ریست کن</b> را وارد کنید)</p>"
 
 
     print("memory_ghable_reset", memory_state)
@@ -2716,8 +2847,33 @@ async def real_estate_chatbot(user_message: str) -> str:
     if not memory_state.get("pending_message"):
         if reset_requested:
             print("🔄 کاربر درخواست ریست داده است. پاک‌سازی حافظه...")
-            clear_filter_memory(memory_state)
-            # memory_state.clear()  # 🚀 حافظه را ریست کن
+
+            # پاکسازی تمام فیلدهای حافظه
+            memory_state.clear()
+            types.clear()
+            last_properties_list = []
+            current_property_index = 0
+            property_name_to_id = {}
+            property_ordered_list = []
+            selected_properties = []
+            comp_properties = []
+            just_answered_questions = None
+
+            # به‌روزرسانی session_data
+            session_data.update({
+                "memory_state": memory_state,
+                "types": types,
+                "last_properties_list": last_properties_list,
+                "current_property_index": current_property_index,
+                "property_name_to_id": property_name_to_id,
+                "property_ordered_list": property_ordered_list,
+                "selected_properties": selected_properties,
+                "comp_properties": comp_properties,
+                "just_answered_questions": just_answered_questions
+            })
+
+            update_chat_session(db, db_session, session_data)
+
             return "✅ فیلترهای قبلی حذف شدند. لطفاً جستجوی جدیدی را شروع کنید. 😊"
 
 
@@ -2731,7 +2887,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         property_id = await extract_property_identifier(user_message, property_name_to_id, property_ordered_list)
         print(f"📌 مقدار property_identifier استخراج‌شده: {property_id}")
 
-        global last_property_id
+        # global last_property_id
         if property_id is None:
             if last_property_id is not None:
                 property_id = last_property_id  # استفاده از ملک قبلی
@@ -2742,16 +2898,65 @@ async def real_estate_chatbot(user_message: str) -> str:
         # ✅ ذخیره این ملک به عنوان آخرین ملکی که درباره‌اش سوال شده است
         last_property_id = property_id
 
-        return generate_ai_details(property_id, detail_type=detail_requested)
+        # return generate_ai_details(property_id, detail_type=detail_requested)
+
+        bot_response = await generate_ai_details(
+            property_id,
+            detail_type=detail_requested,
+            selected_properties=selected_properties
+        )
+
+        if db and user_id and db_session:
+            return save_session_and_return(bot_response, db_session, db, session_data,
+                                        memory_state, types, last_properties_list,
+                                        current_property_index, property_name_to_id,
+                                        property_ordered_list, selected_properties,
+                                        comp_properties, just_answered_questions)
+        else:
+            return bot_response
 
     
     if "compare" in response_type.lower():
-        return await compare_properties(user_message)
-    
+        # return await compare_properties(user_message)
+        bot_response, comp_properties = await compare_properties(
+            user_message,
+            comp_properties=comp_properties,
+            selected_properties=selected_properties,
+            property_name_to_id=property_name_to_id,
+            property_ordered_list=property_ordered_list
+        )
+
+        if db and user_id and db_session:
+            return save_session_and_return(bot_response, db_session, db, session_data,
+                                        memory_state, types, last_properties_list,
+                                        current_property_index, property_name_to_id,
+                                        property_ordered_list, selected_properties,
+                                        comp_properties, just_answered_questions)
+        else:
+            return bot_response
+
+
     if "purchase" in response_type.lower():
         detail_requested = None  # مقدار detail_requested را خالی کن
-        return await process_purchase_request(user_message)   
+        # return await process_purchase_request(user_message)   
+
+        bot_response, last_property_id = await process_purchase_request(
+            user_message,
+            property_name_to_id=property_name_to_id,
+            property_ordered_list=property_ordered_list,
+            selected_properties=selected_properties
+        )
+
+        if db and user_id and db_session:
+            return save_session_and_return(bot_response, db_session, db, session_data,
+                                        memory_state, types, last_properties_list,
+                                        current_property_index, property_name_to_id,
+                                        property_ordered_list, selected_properties,
+                                        comp_properties, just_answered_questions)
+        else:
+            return bot_response
     
+
     if "district_search" in response_type.lower():
         extracted_data = extract_filters(user_message, memory_state)
 
@@ -2776,7 +2981,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         guarantee_rental = extracted_data.get("guarantee_rental_guarantee")
 
 
-        return find_districts_by_budget(
+        bot_response = find_districts_by_budget(
         max_price=max_price, 
         min_price=min_price, 
         min_area=min_area,
@@ -2790,11 +2995,41 @@ async def real_estate_chatbot(user_message: str) -> str:
         payment_plan=payment_plan,
         guarantee_rental=guarantee_rental
         )
+        if db and user_id and db_session:
+            return save_session_and_return(bot_response, db_session, db, session_data,
+                                        memory_state, types, last_properties_list,
+                                        current_property_index, property_name_to_id,
+                                        property_ordered_list, selected_properties,
+                                        comp_properties, just_answered_questions)
+        else:
+            return bot_response
 
 
+
+    # if "more" in response_type.lower():
+    #     return await generate_ai_summary(last_properties_list, start_index=current_property_index)
 
     if "more" in response_type.lower():
-        return await generate_ai_summary(last_properties_list, start_index=current_property_index)
+        (bot_response,
+        property_name_to_id,
+        property_ordered_list,
+        selected_properties,
+        current_property_index,
+        comp_properties) = await generate_ai_summary(
+            last_properties_list,
+            start_index=current_property_index,
+            property_name_to_id=property_name_to_id,
+            property_ordered_list=property_ordered_list
+        )
+
+        if db and user_id and db_session:
+            return save_session_and_return(bot_response, db_session, db, session_data,
+                                        memory_state, types, last_properties_list,
+                                        current_property_index, property_name_to_id,
+                                        property_ordered_list, selected_properties,
+                                        comp_properties, just_answered_questions)
+        else:
+            return bot_response
     
     if "buying_guide" in response_type.lower():
         return await fetch_real_estate_buying_guide(user_message)
@@ -2814,9 +3049,20 @@ async def real_estate_chatbot(user_message: str) -> str:
         extracted_data = extract_filters(user_message, memory_state)  # تابعی که فیلترها رو از پیام درمیاره
         
         if "questions_needed" in extracted_data:
-            payment_question = "پرداخت قبل از تحویل باشد یا بعد از تحویل؟"
+            # payment_question = "پرداخت قبل از تحویل باشد یا بعد از تحویل؟"
             if extracted_data["post_delivery"] == "question":
-                return f"❓ {payment_question}"
+                # return f"❓ {payment_question}"
+            
+                bot_response = "❓ پرداخت قبل از تحویل باشد یا بعد از تحویل؟"
+
+                return save_session_and_return(
+                    bot_response,
+                    db_session, db, session_data,
+                    memory_state, types, last_properties_list,
+                    current_property_index, property_name_to_id,
+                    property_ordered_list, selected_properties,
+                    comp_properties, just_answered_questions
+                )
             
 
         if extracted_data.get("questions_needed"):
@@ -3384,9 +3630,48 @@ async def real_estate_chatbot(user_message: str) -> str:
 
                     properties = apply_manual_filters(properties, filters_date, filters_area)
 
+                    if "max_area" in filters_area:
+                        memory_state["max_area"] = filters_area["max_area"]
+
+                    if "min_area" in filters_area:
+                        memory_state["min_area"] = filters_area["min_area"]
+
+                    if "bedrooms" in extracted_data:
+                        memory_state["bedrooms"] = extracted_data.get("bedrooms")
+
+                    if "Dont_care" in extracted_data:
+                        memory_state["Dont_care"] = extracted_data.get("Dont_care")
+
+                    if "developer_company" in extracted_data:
+                        memory_state["developer_company"] = extracted_data.get("developer_company")
+                        
+                    if "facilities_name" in extracted_data:
+                        memory_state["facilities_name"] = extracted_data.get("facilities_name")
+
+                    if "apartmentType" in extracted_data:
+                        memory_state["apartmentType"] = extracted_data.get("apartmentType")
+
+                    if "post_delivery" in extracted_data:
+                        value = str(extracted_data["post_delivery"]).lower()  # تبدیل مقدار به رشته و کوچک کردن حروف
+                        if value == "dc":
+                            memory_state["post_delivery"] = "All"
+
+
                     properties = sort_properties_by_developer_popularity(properties)
 
-                    response = await generate_ai_summary(properties)
+                    # response = await generate_ai_summary(properties)
+
+                    (response,
+                    property_name_to_id,
+                    property_ordered_list,
+                    selected_properties,
+                    current_property_index,
+                    comp_properties) = await generate_ai_summary(
+                        properties,
+                        start_index=current_property_index,
+                        property_name_to_id=property_name_to_id,
+                        property_ordered_list=property_ordered_list
+                    )
 
                     message_f = f""" 
                     <div style="text-align: right; direction: rtl; padding: 10px; width: 100%;">
@@ -3442,7 +3727,18 @@ async def real_estate_chatbot(user_message: str) -> str:
         
 
         if len(properties) > 0:
-            response = await generate_ai_summary(properties)
+            # response = await generate_ai_summary(properties)
+            (response,
+            property_name_to_id,
+            property_ordered_list,
+            selected_properties,
+            current_property_index,
+            comp_properties) = await generate_ai_summary(
+                properties,
+                start_index=current_property_index,
+                property_name_to_id=property_name_to_id,
+                property_ordered_list=property_ordered_list
+            )
 
             if len(properties) > 1:
                 message_html = f"""
@@ -3462,8 +3758,18 @@ async def real_estate_chatbot(user_message: str) -> str:
             #     <h3 style="color: black;">🔎 بله، {len(properties)} مورد با این مشخصات پیدا شد که الان چندتاشو معرفی می‌کنم:</h3>
             # </div>
             # """
+            bot_response = message_html + response
 
-            return message_html + response
+            if db and user_id and db_session:
+                return save_session_and_return(bot_response, db_session, db, session_data,
+                                            memory_state, types, last_properties_list,
+                                            current_property_index, property_name_to_id,
+                                            property_ordered_list, selected_properties,
+                                            comp_properties, just_answered_questions)
+            else:
+                return bot_response
+
+            # return message_html + response
         else:
             return """
             <div style="text-align: right; direction: rtl; padding: 10px; width: 100%;">
@@ -3499,7 +3805,7 @@ async def real_estate_chatbot(user_message: str) -> str:
         min_area = extracted_data.get("min_area")
 
 
-        return find_price(
+        bot_response = find_price(
         min_area=min_area,
         max_area=max_area,
         district=district, 
@@ -3513,6 +3819,15 @@ async def real_estate_chatbot(user_message: str) -> str:
         guarantee_rental=guarantee_rental
         )
 
+        if db and user_id and db_session:
+            return save_session_and_return(bot_response, db_session, db, session_data,
+                                        memory_state, types, last_properties_list,
+                                        current_property_index, property_name_to_id,
+                                        property_ordered_list, selected_properties,
+                                        comp_properties, just_answered_questions)
+        else:
+            return bot_response
+
 
 
     if "search" in response_type.lower():
@@ -3523,22 +3838,37 @@ async def real_estate_chatbot(user_message: str) -> str:
 
 
         if "questions_needed" in extracted_data and len(extracted_data["questions_needed"]) > 0:
-            # print("❓ اطلاعات ناقص است، سوالات لازم: ", extracted_data["questions_needed"])
 
-            # # 🚀 ذخیره فقط `bedrooms`, `max_price`, `district` در `memory_state`
-            # essential_keys = ["bedrooms", "max_price", "post_delivery"]
-            # for key in essential_keys:
-            #     if extracted_data.get(key) is not None and extracted_data.get(key) != "question":
-            #         memory_state[key] = extracted_data[key]  # مقدار جدید را ذخیره کن
+            # memory_state.update({k: v for k, v in extracted_data.items() if v not in [None, "question"]})
+            # session_data["memory_state"] = memory_state  # 🧠 برای ذخیره در سشن واقعی
 
-            # print("✅ اطلاعات ضروری از extracted_data در memory_state ذخیره شد:", memory_state)
-
-            return "❓ " + "، ".join(extracted_data["questions_needed"])
+            # return "❓ " + "، ".join(extracted_data["questions_needed"])
+            bot_response = "❓ " + "، ".join(extracted_data["questions_needed"])
+    
+            return save_session_and_return(
+                bot_response,
+                db_session, db, session_data,
+                memory_state, types, last_properties_list,
+                current_property_index, property_name_to_id,
+                property_ordered_list, selected_properties,
+                comp_properties, just_answered_questions
+            )
 
         if "questions_needed" in extracted_data:
-            payment_question = "پرداخت قبل از تحویل باشد یا بعد از تحویل؟"
+            # payment_question = "پرداخت قبل از تحویل باشد یا بعد از تحویل؟"
             if extracted_data["post_delivery"] == "question":
-                return f"❓ {payment_question}"
+                # return f"❓ {payment_question}"
+
+                bot_response = "❓ پرداخت قبل از تحویل باشد یا بعد از تحویل؟"
+
+                return save_session_and_return(
+                    bot_response,
+                    db_session, db, session_data,
+                    memory_state, types, last_properties_list,
+                    current_property_index, property_name_to_id,
+                    property_ordered_list, selected_properties,
+                    comp_properties, just_answered_questions
+                )
             
         # previous_questions = set(memory_state.get("asked_questions", []))
         # current_questions = set(extracted_data.get("questions_needed", []))
@@ -3555,8 +3885,20 @@ async def real_estate_chatbot(user_message: str) -> str:
         # بررسی مقدار `extracted_data`
         print("🔹 داده‌های استخراج‌شده از پیام کاربر:", extracted_data)
 
+        # if not extracted_data:
+        #     return "❌ OpenAI نتوانست اطلاعاتی را از پیام شما استخراج کند."
+
         if not extracted_data:
-            return "❌ OpenAI نتوانست اطلاعاتی را از پیام شما استخراج کند."
+            bot_response = "❌ OpenAI نتوانست اطلاعاتی را از پیام شما استخراج کند."
+
+            return save_session_and_return(
+                bot_response,
+                db_session, db, session_data,
+                memory_state, types, last_properties_list,
+                current_property_index, property_name_to_id,
+                property_ordered_list, selected_properties,
+                comp_properties, just_answered_questions
+            )
 
         memory_state.update(extracted_data)
 
@@ -4138,7 +4480,19 @@ async def real_estate_chatbot(user_message: str) -> str:
 
                     properties = sort_properties_by_developer_popularity(properties)
 
-                    response = await generate_ai_summary(properties)
+                    # response = await generate_ai_summary(properties)
+
+                    (response,
+                    property_name_to_id,
+                    property_ordered_list,
+                    selected_properties,
+                    current_property_index,
+                    comp_properties) = await generate_ai_summary(
+                        properties,
+                        start_index=current_property_index,
+                        property_name_to_id=property_name_to_id,
+                        property_ordered_list=property_ordered_list
+                    )
 
                     message_f = f""" 
                     <div style="text-align: right; direction: rtl; padding: 10px; width: 100%;">
@@ -4149,7 +4503,17 @@ async def real_estate_chatbot(user_message: str) -> str:
                     </div>
                     """
 
-                    return message_f + response
+                    # return message_f + response
+                    bot_response = message_html + response
+
+                    if db and user_id and db_session:
+                        return save_session_and_return(bot_response, db_session, db, session_data,
+                                                    memory_state, types, properties,
+                                                    current_property_index, property_name_to_id,
+                                                    property_ordered_list, selected_properties,
+                                                    comp_properties, just_answered_questions)
+                    else:
+                        return bot_response
 
 
         if "max_area" in filters_area:
@@ -4189,10 +4553,31 @@ async def real_estate_chatbot(user_message: str) -> str:
         properties = sort_properties_by_developer_popularity(properties)
 
         # response = generate_ai_summary(properties)
-        response = await generate_ai_summary(properties)
+        # response = await generate_ai_summary(properties)
 
+        (response,
+        property_name_to_id,
+        property_ordered_list,
+        selected_properties,
+        current_property_index,
+            comp_properties) = await generate_ai_summary(
+                properties,
+                start_index=current_property_index,
+                property_name_to_id=property_name_to_id,
+                property_ordered_list=property_ordered_list
+            )
 
-        return response
+        bot_response = response
+
+        if db and user_id and db_session:
+            return save_session_and_return(bot_response, db_session, db, session_data,
+                                           memory_state, types, properties,
+                                           current_property_index, property_name_to_id,
+                                           property_ordered_list, selected_properties,
+                                           comp_properties, just_answered_questions)
+        else:
+            return bot_response
+
 
     # ✅ **۶. اگر درخواست ناشناخته بود**
     return "متوجه نشدم که به دنبال چه چیزی هستید. لطفاً واضح‌تر بگویید که دنبال ملک هستید یا اطلاعات بیشتری درباره ملکی می‌خواهید."
