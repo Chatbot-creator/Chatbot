@@ -107,8 +107,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Set-Cookie", "Access-Control-Allow-Headers",
+                  "Access-Control-Allow-Origin", "Authorization", "Accept",
+                  "X-Requested-With", "Access-Control-Request-Method",
+                  "Access-Control-Request-Headers"],
+    expose_headers=["Content-Type", "Set-Cookie"],
+    max_age=3600
 )
 
 # ✅ روت اصلی
