@@ -143,12 +143,16 @@ client = OpenAI()
 async def unified_chatbot(
     request: Request,
     response: Response,
-    # message: str = Form(None),
-    message: str = None,
     reset_session: str = Form(None),
     file: UploadFile = File(None),
     db: Session = Depends(get_db)
 ):
+    # Handle JSON request for text messages
+    try:
+        body = await request.json()
+        message = body.get("message")
+    except:
+        message = None
     """
     Unified endpoint for handling both text and voice messages.
     
