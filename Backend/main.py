@@ -10,7 +10,7 @@ import os, uuid
 from typing import Optional
 import json
 from dotenv import load_dotenv
-from fastapi import UploadFile, File, Form, Request, Depends
+from fastapi import UploadFile, File, Form, Request, Depends, Response
 import aiofiles
 import openai
 from sqlalchemy.orm import Session
@@ -136,7 +136,10 @@ client = OpenAI()
 # ✅ مسیر API برای چت‌بات - پشتیبانی از متن و صوت
 @app.post("/chatbot")
 async def unified_chatbot(
-    message: str = None,
+    request: Request,
+    response: Response,
+    message: str = Form(None),
+    reset_session: str = Form(None),
     file: UploadFile = File(None),
     db: Session = Depends(get_db)
 ):
@@ -148,6 +151,26 @@ async def unified_chatbot(
         file: Voice message file (optional)
         db: Database session
     """
+    # ✅ بررسی و تنظیم user_id از کوکی
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        user_id = str(uuid.uuid4())
+        response.set_cookie(
+            key="user_id",
+            value=user_id,
+            httponly=True,
+            max_age=60 * 60 * 1  # یک روز اعتبار
+        )
+
+    # ✅ بررسی درخواست ریست از فرانت
+    if reset_session == "yes":
+        print("🧹 درخواست ریست سشن از فرانت دریافت شد.")
+        db_session = get_chat_session(db, user_id)
+        if db_session:
+            db.delete(db_session)
+            db.commit()
+            print("✅ سشن کاربر پاک شد.")
+            
     # ✅ حالت: پیام متنی
     if message is not None and file is None:
         user_message = message.strip()
@@ -161,7 +184,7 @@ async def unified_chatbot(
                 </div>
             """
             return {"response": welcome_message}
-        bot_response = await real_estate_chatbot(user_message)
+        bot_response = await real_estate_chatbot(user_message=user_message, db=db, user_id=user_id)
         return {"response": bot_response}
 
     # ✅ حالت: فایل صوتی
@@ -170,9 +193,9 @@ async def unified_chatbot(
             print("📥 دریافت فایل صوتی:", file.filename)
 
             # دریافت یا ایجاد جلسه چت
-            db_session = get_chat_session(db, "voice_user")  # TODO: implement proper user session management
+            db_session = get_chat_session(db, user_id)  # TODO: implement proper user session management
             if not db_session:
-                db_session = create_chat_session(db, "voice_user")            # خواندن محتوای فایل
+                db_session = create_chat_session(db, user_id)            # خواندن محتوای فایل
             content = await file.read()
             
             # ✅ ذخیره فایل صوتی در دیتابیس
@@ -225,7 +248,7 @@ async def unified_chatbot(
                 print("📝 متن استخراج‌شده:", transcript.text)
                 
                 # پردازش متن استخراج شده توسط چت‌بات
-                bot_response = await real_estate_chatbot(transcript.text)
+                bot_response = await real_estate_chatbot(user_message=transcript.text, db=db, user_id=user_id)
                 return {"response": bot_response}
 
             except Exception as e:
