@@ -105,15 +105,16 @@ async def create_session(
     """ایجاد یک جلسه جدید برای کاربر"""
     # ایجاد جلسه جدید
     db_session = create_new_session_in_db(request, db)
-    
-    # تنظیم کوکی
+      # تنظیم کوکی
     response.set_cookie(
         key="session_id",
         value=db_session.session_id,
         httponly=True,
+        secure=False,  # در محیط توسعه false باشد
         max_age=60 * 60 * 24 * 30,  # 30 روز
         expires=db_session.expires_at.strftime("%a, %d %b %Y %H:%M:%S GMT"),
-        samesite="lax"  # حفاظت از حملات CSRF
+        samesite="lax",  # حفاظت از حملات CSRF
+        domain=None  # domain را None قرار می‌دهیم تا به صورت خودکار از درخواست گرفته شود
     )
     
     return SessionResponse(
@@ -134,14 +135,15 @@ async def get_session(
     db_session = get_or_create_session_in_db(request, session_id, db)
     
     # اگر جلسه جدید ایجاد شده یا کوکی وجود نداشته باشد، کوکی جدید تنظیم می‌کنیم
-    if not session_id or session_id != db_session.session_id:
-        response.set_cookie(
+    if not session_id or session_id != db_session.session_id:        response.set_cookie(
             key="session_id",
             value=db_session.session_id,
             httponly=True,
+            secure=False,  # در محیط توسعه false باشد
             max_age=60 * 60 * 24 * 30,  # 30 روز
             expires=db_session.expires_at.strftime("%a, %d %b %Y %H:%M:%S GMT"),
-            samesite="lax"
+            samesite="lax",  # حفاظت از حملات CSRF
+            domain=None  # domain را None قرار می‌دهیم تا به صورت خودکار از درخواست گرفته شود
         )
     
     return SessionData.from_orm(db_session)
