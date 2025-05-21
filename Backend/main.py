@@ -27,18 +27,6 @@ from App.chatbot.crud import (
     create_voice_message, delete_old_voice_messages
 )
 
-
-from App.cache import setup_cache
-
-# Set up lifespan for FastAPI cache initialization
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Set up Redis cache on startup
-    await setup_cache()
-    yield
-    # Clean up on shutdown
-    scheduler.shutdown()
-
 # بارگذاری env
 load_dotenv("config.env")
 is_dev_env = os.getenv("ENV", "development") == "development"
@@ -146,7 +134,6 @@ def get_cached_properties():
 
 from openai import OpenAI
 client = OpenAI()
-
 
 # ✅ مسیر API برای چت‌بات - پشتیبانی از متن و صوت
 @app.post("/chatbot")
@@ -276,8 +263,6 @@ async def unified_chatbot(
 
     # ❌ هیچ ورودی معتبری نیامده
     return {"error": "نه پیام متنی و نه فایل صوتی ارسال شده است"}
-
-
 
 # ✅ اتصال تمام روت‌های پروژه
 app.include_router(app_router, prefix="/api")
