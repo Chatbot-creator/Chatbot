@@ -28,6 +28,17 @@ from App.chatbot.crud import (
 )
 
 
+from App.cache import setup_cache
+
+# Set up lifespan for FastAPI cache initialization
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Set up Redis cache on startup
+    await setup_cache()
+    yield
+    # Clean up on shutdown
+    scheduler.shutdown()
+
 # بارگذاری env
 load_dotenv("config.env")
 is_dev_env = os.getenv("ENV", "development") == "development"
@@ -36,8 +47,7 @@ is_dev_env = os.getenv("ENV", "development") == "development"
 if is_dev_env:
     Base.metadata.create_all(bind=engine)
 
-# کش املاک
-property_cache = {}
+# Background scheduler setup 
 scheduler = BackgroundScheduler()
 
 def fetch_all_properties_from_db():
@@ -99,10 +109,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# ✅ فعال‌سازی GZIP برای همه‌ی responseها
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+# ✅ فعال‌سازی GZIP با حداقل سایز کمتر برای فشرده‌سازی بیشتر
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
-# ✅ CORS
+# ✅ تنظیمات CORS بهینه‌شده
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
@@ -111,9 +121,9 @@ app.add_middleware(
     allow_headers=["Content-Type", "Set-Cookie", "Access-Control-Allow-Headers",
                   "Access-Control-Allow-Origin", "Authorization", "Accept",
                   "X-Requested-With", "Access-Control-Request-Method",
-                  "Access-Control-Request-Headers"],
-    expose_headers=["Content-Type", "Set-Cookie"],
-    max_age=3600
+                  "Access-Control-Request-Headers", "Connection", "Keep-Alive"],
+    expose_headers=["Content-Type", "Set-Cookie", "Content-Encoding"],
+    max_age=7200  # افزایش زمان کش CORS برای کاهش درخواست‌های preflight
 )
 
 # ✅ روت اصلی
@@ -143,7 +153,6 @@ client = OpenAI()
 async def unified_chatbot(
     request: Request,
     response: Response,
-    reset_session: str = Form(None),
     file: UploadFile = File(None),
     db: Session = Depends(get_db)
 ):
@@ -151,17 +160,12 @@ async def unified_chatbot(
     try:
         body = await request.json()
         message = body.get("message")
+        reset_session = body.get("reset_session")  # اینجا reset_session را از body می‌گیریم
     except:
         message = None
-    """
-    Unified endpoint for handling both text and voice messages.
-    
-    Args:
-        message: Text message from user (optional)
-        file: Voice message file (optional)
-        db: Database session
-    """
-    # ✅ بررسی و تنظیم user_id از کوکی
+        reset_session = None
+
+    # ✅ بررسی user_id از کوکی
     user_id = request.cookies.get("user_id")
     if not user_id:
         user_id = str(uuid.uuid4())
@@ -180,7 +184,8 @@ async def unified_chatbot(
             db.delete(db_session)
             db.commit()
             print("✅ سشن کاربر پاک شد.")
-            
+            return {"response": "سشن با موفقیت پاک شد"}
+
     # ✅ حالت: پیام متنی
     if message is not None and file is None:
         user_message = message.strip()
@@ -292,9 +297,20 @@ async def custom_openapi():
         )
     return ORJSONResponse(content=cached_openapi_schema)
 
-# ✅ اجرای پروژه با uvicorn
+# ✅ اجرای پروژه با uvicorn و تنظیمات بهینه‌شده
 if __name__ == "__main__":
     import uvicorn
     host = os.getenv("API_HOST", "0.0.0.0")
     port = int(os.getenv("API_PORT", "8000"))
-    uvicorn.run("main:app", host=host, port=port, reload=is_dev_env)
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=is_dev_env,
+        workers=4,  # تعداد workers برای پردازش موازی
+        loop="uvloop",  # استفاده از uvloop برای عملکرد بهتر
+        http="httptools",  # استفاده از httptools برای پارس سریع‌تر HTTP
+        limit_concurrency=1000,  # محدودیت تعداد درخواست‌های همزمان
+        backlog=2048,  # افزایش صف انتظار اتصالات
+        timeout_keep_alive=5  # کاهش زمان نگهداری اتصالات غیرفعال
+    )
